@@ -130,11 +130,6 @@ router.post('/session/:sessionId/start', (req, res) => {
 
   if (questions.length === 0) return res.status(400).json({ error: 'Quiz has no questions' });
 
-  // Clear any closed state from previous sessions using the same questions
-  for (const q of questions) {
-    closedQuestions.delete(q.id);
-  }
-
   const firstQuestion = questions[0];
   const answers = db.prepare('SELECT * FROM answer WHERE question_id = ?').all(firstQuestion.id);
 
@@ -396,5 +391,4 @@ function scoreEstimationQuestion(question) {
   }
 }
 
-export { closedQuestions };
 export default router;

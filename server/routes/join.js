@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import db from '../db/db.js';
-import { closedQuestions } from './session.js';
 
 const router = Router();
 
@@ -102,15 +101,10 @@ router.post('/answer', (req, res) => {
   const question = db.prepare('SELECT * FROM question WHERE id = ? AND quiz_id = ?').get(questionId, session.quiz_id);
   if (!question) return res.status(404).json({ error: 'Question not found' });
 
-  // Check if question is closed
-  if (closedQuestions.has(questionId)) {
-    return res.status(410).json({ error: 'Question is closed' });
-  }
-
-  // Check current question matches
+  // Check current question matches (rejects closed/past questions)
   const questions = db.prepare('SELECT id FROM question WHERE quiz_id = ? ORDER BY sort_order').all(session.quiz_id);
   if (questions[session.current_question_index]?.id !== questionId) {
-    return res.status(410).json({ error: 'Question is not current' });
+    return res.status(410).json({ error: 'Question is closed' });
   }
 
   // Check for existing response (allow revision)
