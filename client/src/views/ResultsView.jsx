@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import Scoreboard from '../components/Scoreboard.jsx';
+import { applyTheme } from '../theme.js';
 
 export default function ResultsView() {
   const { sessionId } = useParams();
@@ -14,7 +15,7 @@ export default function ResultsView() {
     fetch(`/api/session/${sessionId}/results`).then(r => r.json()).then(data => {
       setResults(data);
       if (data.themeColor) {
-        document.documentElement.style.setProperty('--accent', data.themeColor);
+        applyTheme(data.themeColor, data.lightMode);
       }
     });
   }, [sessionId]);
@@ -24,7 +25,7 @@ export default function ResultsView() {
   return (
     <div className="max-w-2xl mx-auto p-6">
       {adminToken && (
-        <nav className="mb-6 text-sm text-gray-400">
+        <nav className="mb-6 text-sm text-text-secondary">
           <a href="/admin" onClick={(e) => { e.preventDefault(); navigate('/admin'); }} className="hover:text-white transition">Dashboard</a>
           <span className="mx-2">/</span>
           <a href={`/admin/${adminToken}`} onClick={(e) => { e.preventDefault(); navigate(`/admin/${adminToken}`); }} className="hover:text-white transition">Quiz</a>
@@ -33,7 +34,7 @@ export default function ResultsView() {
         </nav>
       )}
       <h1 className="text-3xl font-bold text-center mb-2">{results.quizTitle}</h1>
-      <p className="text-gray-400 text-center mb-8">Final Results</p>
+      <p className="text-text-secondary text-center mb-8">Final Results</p>
 
       {results.logoUrl && (
         <div className="flex justify-center mb-6">

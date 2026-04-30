@@ -146,6 +146,7 @@ router.get('/quiz/:adminToken', (req, res) => {
     title: quiz.title,
     adminToken: quiz.admin_token,
     themeColor: quiz.theme_color,
+    lightMode: !!quiz.light_mode,
     logoUrl: quiz.logo_url,
     createdAt: quiz.created_at,
     questions: questionsWithAnswers
@@ -156,13 +157,13 @@ router.put('/quiz/:adminToken', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
 
-  const { title, themeColor, logoUrl } = req.body;
+  const { title, themeColor, logoUrl, lightMode } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required' });
   if (title.trim().length > 200) return res.status(400).json({ error: 'Title too long (max 200)' });
 
   db.prepare(`
-    UPDATE quiz SET title = ?, theme_color = ?, logo_url = ? WHERE id = ?
-  `).run(title.trim(), themeColor || '#6366f1', logoUrl || null, quiz.id);
+    UPDATE quiz SET title = ?, theme_color = ?, logo_url = ?, light_mode = ? WHERE id = ?
+  `).run(title.trim(), themeColor || '#6366f1', logoUrl || null, lightMode ? 1 : 0, quiz.id);
 
   res.json({ ok: true });
 });

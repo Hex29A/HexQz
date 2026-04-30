@@ -130,6 +130,11 @@ router.post('/session/:sessionId/start', (req, res) => {
 
   if (questions.length === 0) return res.status(400).json({ error: 'Quiz has no questions' });
 
+  // Clear any closed state from previous sessions using the same questions
+  for (const q of questions) {
+    closedQuestions.delete(q.id);
+  }
+
   const firstQuestion = questions[0];
   const answers = db.prepare('SELECT * FROM answer WHERE question_id = ?').all(firstQuestion.id);
 
@@ -216,11 +221,14 @@ router.get('/session/:sessionId/current', (req, res) => {
   const session = db.prepare('SELECT * FROM session WHERE id = ?').get(req.params.sessionId);
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
+  const quiz = db.prepare('SELECT theme_color, light_mode FROM quiz WHERE id = ?').get(session.quiz_id);
   const questions = db.prepare(`
     SELECT * FROM question WHERE quiz_id = ? ORDER BY sort_order
   `).all(session.quiz_id);
 
   const scores = getSessionScores(session.id);
+  const themeColor = quiz?.theme_color || null;
+  const lightMode = !!quiz?.light_mode;
 
   if (session.status === 'waiting') {
     const participants = db.prepare('SELECT * FROM participant WHERE session_id = ?').all(session.id);
@@ -230,6 +238,8 @@ router.get('/session/:sessionId/current', (req, res) => {
       questionIndex: 0,
       totalQuestions: questions.length,
       scores,
+      themeColor,
+      lightMode,
       participants: participants.map(p => ({ id: p.id, displayName: p.display_name, teamName: p.team_name }))
     });
   }
@@ -238,6 +248,8 @@ router.get('/session/:sessionId/current', (req, res) => {
     return res.json({
       status: 'finished',
       scores,
+      themeColor,
+      lightMode,
       totalQuestions: questions.length,
       questionIndex: questions.length,
       questions: questions.map(q => ({ id: q.id, text: q.text, type: q.type, sortOrder: q.sort_order }))
@@ -246,7 +258,7 @@ router.get('/session/:sessionId/current', (req, res) => {
 
   // Active
   const currentQuestion = questions[session.current_question_index];
-  if (!currentQuestion) return res.json({ status: 'active', joinCode: session.join_code, scores, questionIndex: session.current_question_index, totalQuestions: questions.length });
+  if (!currentQuestion) return res.json({ status: 'active', joinCode: session.join_code, scores, themeColor, lightMode, questionIndex: session.current_question_index, totalQuestions: questions.length });
 
   const answers = db.prepare('SELECT * FROM answer WHERE question_id = ?').all(currentQuestion.id);
 
@@ -257,6 +269,8 @@ router.get('/session/:sessionId/current', (req, res) => {
     answers: answers.map(a => ({ id: a.id, text: a.text, partLabel: a.part_label || undefined })),
     questionIndex: session.current_question_index,
     totalQuestions: questions.length,
+    themeColor,
+    lightMode,
     scores
   });
 });

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import socket from '../socket.js';
+import { applyTheme } from '../theme.js';
 
 const POLL_INTERVAL = 8000;
 
@@ -24,6 +25,7 @@ export default function GameView() {
   const pollTimer = useRef(null);
 
   const applyState = useCallback((data) => {
+    if (data.themeColor) applyTheme(data.themeColor, data.lightMode);
     if (data.status === 'finished') {
       navigate(`/results/${sessionId}`);
       return;
@@ -152,7 +154,7 @@ export default function GameView() {
     }
   };
 
-  const answerColors = ['bg-red-600', 'bg-blue-600', 'bg-yellow-600', 'bg-green-600', 'bg-purple-600', 'bg-pink-600'];
+  const answerLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
 
   if (!question) {
     return (
@@ -172,7 +174,7 @@ export default function GameView() {
   return (
     <div className="flex flex-col min-h-screen p-4">
       <div className="text-center mb-4">
-        <span className="text-gray-400 text-sm">Question {questionIndex + 1} of {totalQuestions}</span>
+        <span className="text-text-secondary text-sm">Question {questionIndex + 1} of {totalQuestions}</span>
       </div>
 
       <div className="flex-1 flex flex-col justify-center">
@@ -182,13 +184,13 @@ export default function GameView() {
         {submitted ? (
           <div className="text-center py-8">
             <div className="text-4xl mb-2">&#10003;</div>
-            <p className="text-lg text-gray-400 mb-2">Answer received!</p>
+            <p className="text-lg text-text-secondary mb-2">Answer received!</p>
             {liveCount.total > 0 && (
-              <p className="text-sm text-gray-500 mb-4">{liveCount.count}/{liveCount.total} answered</p>
+              <p className="text-sm text-text-secondary mb-4">{liveCount.count}/{liveCount.total} answered</p>
             )}
             <button
               onClick={() => setSubmitted(false)}
-              className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-800 transition text-sm"
+              className="px-6 py-2 border border-border-theme rounded-lg text-text-secondary hover:bg-bg-card transition text-sm"
             >Change answer</button>
           </div>
         ) : (
@@ -213,11 +215,11 @@ export default function GameView() {
                           setSelectedAnswer(a.id);
                         }
                       }}
-                      className={`py-4 px-6 rounded-xl text-lg font-semibold transition ${
-                        isSelected ? `${answerColors[i % answerColors.length]} ring-2 ring-white` : 'bg-gray-800 hover:bg-gray-700'
+                      className={`btn-answer py-4 px-6 text-lg font-semibold text-left ${
+                        isSelected ? 'selected' : ''
                       }`}
                     >
-                      <span className="font-bold mr-2">{String.fromCharCode(65 + i)}</span> {a.text}
+                      <span className="font-bold mr-3 opacity-60">{answerLetters[i % answerLetters.length]}</span> {a.text}
                     </button>
                   );
                 })}
@@ -233,7 +235,7 @@ export default function GameView() {
                   value={textAnswer}
                   onChange={e => setTextAnswer(e.target.value)}
                   maxLength={100}
-                  className="w-full px-4 py-3 text-lg bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-accent"
+                  className="w-full px-4 py-3 text-lg bg-bg-card border border-border-theme rounded-lg focus:outline-none focus:border-accent"
                   autoFocus
                 />
               </div>
@@ -243,14 +245,14 @@ export default function GameView() {
               <div className="mt-4 flex flex-col gap-3">
                 {partLabels.map(label => (
                   <div key={label}>
-                    <label className="text-sm text-gray-400 mb-1 block">{label}</label>
+                    <label className="text-sm text-text-secondary mb-1 block">{label}</label>
                     <input
                       type="text"
                       placeholder={`Enter ${label.toLowerCase()}...`}
                       value={multiPartAnswers[label] || ''}
                       onChange={e => setMultiPartAnswers(prev => ({ ...prev, [label]: e.target.value }))}
                       maxLength={100}
-                      className="w-full px-4 py-3 text-lg bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-accent"
+                      className="w-full px-4 py-3 text-lg bg-bg-card border border-border-theme rounded-lg focus:outline-none focus:border-accent"
                     />
                   </div>
                 ))}

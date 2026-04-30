@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { applyTheme } from '../theme.js';
 
 export default function JoinView() {
   const [searchParams] = useSearchParams();
@@ -25,7 +26,7 @@ export default function JoinView() {
       const data = await res.json();
       setSessionInfo(data);
       if (data.themeColor) {
-        document.documentElement.style.setProperty('--accent', data.themeColor);
+        applyTheme(data.themeColor, data.lightMode);
       }
       // Check if we already have a participantId for this session (auto-resume)
       const savedPid = localStorage.getItem(`participant:${data.sessionId}`);
@@ -82,7 +83,7 @@ export default function JoinView() {
             value={joinCode}
             onChange={e => setJoinCode(e.target.value.toUpperCase())}
             maxLength={6}
-            className="w-full px-4 py-3 text-center text-2xl font-mono tracking-widest bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-accent uppercase"
+            className="w-full px-4 py-3 text-center text-2xl font-mono tracking-widest bg-bg-card border border-border-theme rounded-lg focus:outline-none focus:border-accent uppercase"
             autoFocus
           />
           {error && <p className="text-red-400 text-sm text-center">{error}</p>}
@@ -97,7 +98,7 @@ export default function JoinView() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-6">
       <h1 className="text-3xl font-bold mb-2">{sessionInfo?.quizTitle || 'Join Quiz'}</h1>
-      <p className="text-gray-400 mb-6">Enter your name to join</p>
+      <p className="text-text-secondary mb-6">Enter your name to join</p>
       <form onSubmit={handleRegister} className="w-full max-w-sm flex flex-col gap-3">
         <input
           type="text"
@@ -105,7 +106,7 @@ export default function JoinView() {
           value={displayName}
           onChange={e => setDisplayName(e.target.value)}
           maxLength={30}
-          className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-accent"
+          className="w-full px-4 py-3 bg-bg-card border border-border-theme rounded-lg focus:outline-none focus:border-accent"
           autoFocus
         />
         <input
@@ -114,7 +115,7 @@ export default function JoinView() {
           value={teamName}
           onChange={e => setTeamName(e.target.value)}
           maxLength={30}
-          className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-accent"
+          className="w-full px-4 py-3 bg-bg-card border border-border-theme rounded-lg focus:outline-none focus:border-accent"
         />
         {error && <p className="text-red-400 text-sm text-center">{error}</p>}
         <button type="submit" className="w-full py-3 bg-accent hover:opacity-90 rounded-lg font-semibold text-lg transition">

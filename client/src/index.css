@@ -2,10 +2,758 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===== BASE VARIABLES ===== */
 :root {
   --accent: #6366f1;
+  --accent-glow: #6366f140;
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-card: #1e293b;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --border: #334155;
+  --radius: 0.75rem;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-gradient: none;
+  --card-shadow: none;
+  --card-border-width: 1px;
+  --card-border-style: solid;
+  --btn-radius: 0.75rem;
+  --btn-shadow: none;
+  --btn-selected-shadow: 0 0 15px var(--accent-glow);
+  --answer-transition: all 0.2s ease;
 }
 
+/* ===== THEME: INDIGO (default) ===== */
+[data-theme="indigo"] {
+  --accent: #6366f1;
+  --accent-glow: #6366f140;
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-card: #1e293b;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --border: #334155;
+  --radius: 0.75rem;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-gradient: linear-gradient(180deg, #0f172a 0%, #1e1b4b 100%);
+  --card-shadow: 0 4px 20px rgba(99, 102, 241, 0.1);
+  --btn-radius: 0.75rem;
+}
+
+/* ===== THEME: SYNTHWAVE ===== */
+[data-theme="synthwave"] {
+  --accent: #f472b6;
+  --accent-glow: #f472b680;
+  --bg-primary: #0d001a;
+  --bg-secondary: #1a0033;
+  --bg-card: rgba(45, 27, 78, 0.8);
+  --text-primary: #fce7f3;
+  --text-secondary: #e879f9;
+  --border: #a855f7;
+  --radius: 1rem;
+  --font: 'Orbitron', sans-serif;
+  --bg-gradient: linear-gradient(180deg, #0d001a 0%, #1a0033 30%, #2d1b4e 70%, #1a0033 100%);
+  --card-shadow: 0 0 30px rgba(168, 85, 247, 0.3), inset 0 1px 0 rgba(244, 114, 182, 0.2);
+  --card-border-width: 2px;
+  --btn-radius: 2rem;
+  --btn-shadow: 0 0 10px rgba(244, 114, 182, 0.3);
+  --btn-selected-shadow: 0 0 30px rgba(244, 114, 182, 0.6), 0 0 60px rgba(244, 114, 182, 0.3);
+}
+
+/* ===== THEME: STAR TREK ===== */
+[data-theme="startrek"] {
+  --accent: #f59f00;
+  --accent-glow: #f59f0050;
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a14;
+  --bg-card: rgba(10, 10, 30, 0.9);
+  --text-primary: #ff9500;
+  --text-secondary: #cc7700;
+  --border: #f59f00;
+  --radius: 0;
+  --font: 'Titillium Web', -apple-system, sans-serif;
+  --bg-gradient: linear-gradient(180deg, #000000 0%, #050510 50%, #0a0a1a 100%);
+  --card-shadow: none;
+  --card-border-width: 3px;
+  --card-border-style: solid;
+  --btn-radius: 0 1.5rem 1.5rem 0;
+  --btn-shadow: none;
+  --btn-selected-shadow: 0 0 20px rgba(245, 159, 0, 0.5);
+}
+
+/* ===== THEME: EMERALD ===== */
+[data-theme="emerald"] {
+  --accent: #10b981;
+  --accent-glow: #10b98150;
+  --bg-primary: #021a13;
+  --bg-secondary: #032d1e;
+  --bg-card: rgba(6, 78, 59, 0.5);
+  --text-primary: #ecfdf5;
+  --text-secondary: #6ee7b7;
+  --border: rgba(16, 185, 129, 0.3);
+  --radius: 1rem;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-gradient: linear-gradient(160deg, #021a13 0%, #032d1e 40%, #064e3b 100%);
+  --card-shadow: 0 8px 32px rgba(16, 185, 129, 0.1);
+  --card-border-width: 1px;
+  --btn-radius: 1rem;
+  --btn-shadow: 0 2px 10px rgba(16, 185, 129, 0.1);
+  --btn-selected-shadow: 0 0 25px rgba(16, 185, 129, 0.4);
+}
+
+/* ===== THEME: ROSE ===== */
+[data-theme="rose"] {
+  --accent: #f43f5e;
+  --accent-glow: #f43f5e50;
+  --bg-primary: #1a0510;
+  --bg-secondary: #2d0a1a;
+  --bg-card: rgba(45, 10, 26, 0.8);
+  --text-primary: #fff1f2;
+  --text-secondary: #fda4af;
+  --border: rgba(244, 63, 94, 0.3);
+  --radius: 1.5rem;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-gradient: linear-gradient(135deg, #1a0510 0%, #2d0a1a 50%, #1a0520 100%);
+  --card-shadow: 0 4px 24px rgba(244, 63, 94, 0.15);
+  --card-border-width: 1px;
+  --btn-radius: 2rem;
+  --btn-shadow: 0 2px 8px rgba(244, 63, 94, 0.1);
+  --btn-selected-shadow: 0 0 20px rgba(244, 63, 94, 0.4);
+}
+
+/* ===== THEME: AMBER ===== */
+[data-theme="amber"] {
+  --accent: #f59e0b;
+  --accent-glow: #f59e0b50;
+  --bg-primary: #1a1000;
+  --bg-secondary: #2d1c04;
+  --bg-card: rgba(45, 28, 4, 0.8);
+  --text-primary: #fffbeb;
+  --text-secondary: #fcd34d;
+  --border: rgba(245, 158, 11, 0.3);
+  --radius: 0.5rem;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-gradient: linear-gradient(180deg, #1a1000 0%, #2d1c04 60%, #3d2806 100%);
+  --card-shadow: 0 4px 16px rgba(245, 158, 11, 0.1);
+  --card-border-width: 1px;
+  --card-border-style: solid;
+  --btn-radius: 0.5rem;
+  --btn-shadow: none;
+  --btn-selected-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+}
+
+/* ===== THEME: CYAN ===== */
+[data-theme="cyan"] {
+  --accent: #06b6d4;
+  --accent-glow: #06b6d450;
+  --bg-primary: #041c24;
+  --bg-secondary: #0a2e3a;
+  --bg-card: rgba(10, 46, 58, 0.6);
+  --text-primary: #ecfeff;
+  --text-secondary: #67e8f9;
+  --border: rgba(6, 182, 212, 0.25);
+  --radius: 1rem;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-gradient: linear-gradient(180deg, #041c24 0%, #0a2e3a 50%, #062830 100%);
+  --card-shadow: 0 8px 32px rgba(6, 182, 212, 0.1), inset 0 1px 0 rgba(6, 182, 212, 0.1);
+  --card-border-width: 1px;
+  --btn-radius: 1rem;
+  --btn-shadow: 0 0 8px rgba(6, 182, 212, 0.1);
+  --btn-selected-shadow: 0 0 25px rgba(6, 182, 212, 0.5);
+}
+
+/* ===== THEME: VIOLET ===== */
+[data-theme="violet"] {
+  --accent: #8b5cf6;
+  --accent-glow: #8b5cf660;
+  --bg-primary: #0a0520;
+  --bg-secondary: #150d30;
+  --bg-card: rgba(21, 13, 48, 0.8);
+  --text-primary: #f5f3ff;
+  --text-secondary: #c4b5fd;
+  --border: rgba(139, 92, 246, 0.3);
+  --radius: 1rem;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-gradient: linear-gradient(160deg, #0a0520 0%, #150d30 40%, #1e1040 80%, #0a0520 100%);
+  --card-shadow: 0 4px 24px rgba(139, 92, 246, 0.15);
+  --card-border-width: 1px;
+  --btn-radius: 1rem;
+  --btn-shadow: 0 2px 12px rgba(139, 92, 246, 0.15);
+  --btn-selected-shadow: 0 0 25px rgba(139, 92, 246, 0.5);
+}
+
+/* ===== THEME: SUNSET ===== */
+[data-theme="sunset"] {
+  --accent: #ea580c;
+  --accent-glow: #ea580c50;
+  --bg-primary: #1a0800;
+  --bg-secondary: #2d1408;
+  --bg-card: rgba(45, 20, 8, 0.8);
+  --text-primary: #fff7ed;
+  --text-secondary: #fdba74;
+  --border: rgba(234, 88, 12, 0.3);
+  --radius: 0.75rem;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-gradient: linear-gradient(180deg, #1a0800 0%, #2d1408 40%, #3d1e0c 70%, #2d1408 100%);
+  --card-shadow: 0 4px 16px rgba(234, 88, 12, 0.1);
+  --card-border-width: 1px;
+  --card-border-style: solid;
+  --btn-radius: 0.75rem;
+  --btn-shadow: none;
+  --btn-selected-shadow: 0 0 20px rgba(234, 88, 12, 0.4);
+}
+
+/* ===== THEME: SLATE ===== */
+[data-theme="slate"] {
+  --accent: #94a3b8;
+  --accent-glow: #94a3b830;
+  --bg-primary: #0f1419;
+  --bg-secondary: #1c2128;
+  --bg-card: #1c2128;
+  --text-primary: #e6edf3;
+  --text-secondary: #7d8590;
+  --border: #30363d;
+  --radius: 0.375rem;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --bg-gradient: none;
+  --card-shadow: none;
+  --card-border-width: 1px;
+  --card-border-style: solid;
+  --btn-radius: 0.375rem;
+  --btn-shadow: none;
+  --btn-selected-shadow: 0 0 0 2px var(--accent);
+}
+
+/* ===== BODY BASE ===== */
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font);
+  background-color: var(--bg-primary);
+  background-image: var(--bg-gradient);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+/* ===== CARD STYLES ===== */
+.card {
+  background-color: var(--bg-card);
+  border: var(--card-border-width) var(--card-border-style) var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--card-shadow);
+  backdrop-filter: blur(8px);
+  transition: var(--answer-transition);
+}
+
+/* Star Trek LCARS-style cards: angular left edge */
+[data-theme="startrek"] .card {
+  border-radius: 0 var(--radius) var(--radius) 0;
+  border-left: 4px solid var(--accent);
+  border-top: none;
+  border-bottom: none;
+  border-right: 1px solid rgba(245, 159, 0, 0.2);
+}
+
+/* Synthwave cards: neon glow border */
+[data-theme="synthwave"] .card {
+  border: 2px solid rgba(168, 85, 247, 0.5);
+  animation: neon-card-pulse 3s ease-in-out infinite;
+}
+
+/* Emerald cards: frosted glass */
+[data-theme="emerald"] .card {
+  backdrop-filter: blur(16px);
+  background: rgba(6, 78, 59, 0.4);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+/* Cyan cards: frosted glass with top highlight */
+[data-theme="cyan"] .card {
+  backdrop-filter: blur(12px);
+  background: rgba(10, 46, 58, 0.5);
+  border-top: 1px solid rgba(6, 182, 212, 0.3);
+}
+
+/* Sunset cards: warm bottom accent */
+[data-theme="sunset"] .card {
+  border-bottom: 3px solid var(--accent);
+  border-top: none;
+  border-left: none;
+  border-right: none;
+}
+
+/* ===== BUTTON: ACCENT ===== */
+.btn-accent {
+  background-color: var(--accent);
+  border-radius: var(--btn-radius);
+  box-shadow: var(--btn-shadow);
+  transition: var(--answer-transition);
+  font-weight: 600;
+}
+.btn-accent:hover {
+  opacity: 0.9;
+  box-shadow: var(--btn-selected-shadow);
+  transform: translateY(-1px);
+}
+
+/* Star Trek accent button: LCARS style */
+[data-theme="startrek"] .btn-accent {
+  border-radius: 0 2rem 2rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Synthwave accent button */
+[data-theme="synthwave"] .btn-accent {
+  text-shadow: 0 0 10px rgba(244, 114, 182, 0.8);
+  animation: neon-btn-pulse 2s ease-in-out infinite;
+}
+
+/* ===== BUTTON: ANSWER ===== */
+.btn-answer {
+  background-color: var(--bg-secondary);
+  border: 2px solid var(--border);
+  border-radius: var(--btn-radius);
+  box-shadow: var(--btn-shadow);
+  transition: var(--answer-transition);
+  position: relative;
+  overflow: hidden;
+}
+.btn-answer:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: var(--btn-shadow), 0 4px 12px rgba(0,0,0,0.2);
+}
+.btn-answer.selected {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: var(--btn-selected-shadow);
+  transform: scale(1.02);
+}
+
+/* Star Trek answer buttons: LCARS angular */
+[data-theme="startrek"] .btn-answer {
+  border-radius: 0 1.5rem 1.5rem 0;
+  border-left: 4px solid var(--border);
+  border-top: 1px solid rgba(245, 159, 0, 0.15);
+  border-bottom: 1px solid rgba(245, 159, 0, 0.15);
+  border-right: 1px solid rgba(245, 159, 0, 0.15);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.95em;
+}
+[data-theme="startrek"] .btn-answer:hover {
+  border-left-color: var(--accent);
+  background-color: rgba(245, 159, 0, 0.1);
+}
+[data-theme="startrek"] .btn-answer.selected {
+  border-left-color: var(--accent);
+  background-color: rgba(245, 159, 0, 0.2);
+  border-color: var(--accent);
+}
+
+/* Synthwave answer buttons: neon pill */
+[data-theme="synthwave"] .btn-answer {
+  border: 2px solid rgba(168, 85, 247, 0.4);
+  border-radius: 2rem;
+  background: rgba(26, 0, 51, 0.8);
+}
+[data-theme="synthwave"] .btn-answer:hover {
+  border-color: #f472b6;
+  box-shadow: 0 0 15px rgba(244, 114, 182, 0.3);
+  text-shadow: 0 0 8px rgba(244, 114, 182, 0.5);
+}
+[data-theme="synthwave"] .btn-answer.selected {
+  background: linear-gradient(135deg, #f472b6, #a855f7);
+  border-color: #f472b6;
+  box-shadow: 0 0 30px rgba(244, 114, 182, 0.6), 0 0 60px rgba(244, 114, 182, 0.3);
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+}
+
+/* Emerald answer buttons: soft glass */
+[data-theme="emerald"] .btn-answer {
+  background: rgba(6, 78, 59, 0.4);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 1rem;
+}
+[data-theme="emerald"] .btn-answer:hover {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.5);
+}
+[data-theme="emerald"] .btn-answer.selected {
+  background: rgba(16, 185, 129, 0.3);
+  border-color: var(--accent);
+  box-shadow: 0 0 25px rgba(16, 185, 129, 0.3);
+}
+
+/* Rose answer buttons: pill with soft glow */
+[data-theme="rose"] .btn-answer {
+  border-radius: 2rem;
+  border: 1px solid rgba(244, 63, 94, 0.2);
+}
+[data-theme="rose"] .btn-answer.selected {
+  background: linear-gradient(135deg, #f43f5e, #e11d48);
+  border-color: #f43f5e;
+}
+
+/* Cyan: frosted glass buttons */
+[data-theme="cyan"] .btn-answer {
+  backdrop-filter: blur(8px);
+  background: rgba(10, 46, 58, 0.5);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+}
+[data-theme="cyan"] .btn-answer:hover {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: rgba(6, 182, 212, 0.5);
+}
+[data-theme="cyan"] .btn-answer.selected {
+  background: rgba(6, 182, 212, 0.25);
+  border-color: var(--accent);
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.4), inset 0 0 20px rgba(6, 182, 212, 0.1);
+}
+
+/* Slate: minimal sharp buttons */
+[data-theme="slate"] .btn-answer {
+  border-radius: 0.375rem;
+  border: 1px solid #30363d;
+  background: #1c2128;
+}
+[data-theme="slate"] .btn-answer:hover {
+  border-color: #94a3b8;
+  background: #21262d;
+  transform: none;
+}
+[data-theme="slate"] .btn-answer.selected {
+  background: #21262d;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+  transform: none;
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes neon-card-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.2), 0 0 40px rgba(244, 114, 182, 0.1); }
+  50% { box-shadow: 0 0 30px rgba(168, 85, 247, 0.4), 0 0 60px rgba(244, 114, 182, 0.2); }
+}
+
+@keyframes neon-btn-pulse {
+  0%, 100% { box-shadow: 0 0 15px rgba(244, 114, 182, 0.4); }
+  50% { box-shadow: 0 0 25px rgba(244, 114, 182, 0.7), 0 0 50px rgba(244, 114, 182, 0.3); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+/* Synthwave: neon text for headings */
+[data-theme="synthwave"] h1,
+[data-theme="synthwave"] h2 {
+  text-shadow: 0 0 10px rgba(244, 114, 182, 0.5), 0 0 30px rgba(168, 85, 247, 0.3);
+}
+
+/* Star Trek: slight glow on headings */
+[data-theme="startrek"] h1,
+[data-theme="startrek"] h2 {
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Rose: gentle pulse on selected */
+[data-theme="rose"] .btn-answer.selected {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* ===== SCOREBOARD THEME OVERRIDES ===== */
+[data-theme="startrek"] .scoreboard-row {
+  border-left: 3px solid var(--accent);
+  border-radius: 0;
+}
+
+[data-theme="synthwave"] .scoreboard-row {
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  border-radius: 1rem;
+}
+
+/* ===== INPUT THEMING ===== */
+input[type="text"],
+input[type="number"] {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  transition: border-color 0.2s;
+}
+input[type="text"]:focus,
+input[type="number"]:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+[data-theme="synthwave"] input[type="text"],
+[data-theme="synthwave"] input[type="number"] {
+  border: 2px solid rgba(168, 85, 247, 0.4);
+  border-radius: 2rem;
+  background: rgba(26, 0, 51, 0.8);
+}
+[data-theme="synthwave"] input:focus {
+  border-color: #f472b6;
+  box-shadow: 0 0 15px rgba(244, 114, 182, 0.3);
+}
+
+[data-theme="startrek"] input[type="text"],
+[data-theme="startrek"] input[type="number"] {
+  border-radius: 0 1rem 1rem 0;
+  border-left: 3px solid var(--accent);
+  border-top: 1px solid rgba(245, 159, 0, 0.2);
+  border-bottom: 1px solid rgba(245, 159, 0, 0.2);
+  border-right: 1px solid rgba(245, 159, 0, 0.2);
+}
+
+/* ===== ENSURE CONTENT ABOVE OVERLAYS ===== */
+#root {
+  position: relative;
+  z-index: 2;
+}
+
+/* ===== BACKGROUND OVERLAYS ===== */
+.theme-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.theme-overlay-synthwave {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.15) 2px,
+    rgba(0, 0, 0, 0.15) 4px
+  );
+}
+
+.theme-overlay-startrek {
+  background-image:
+    radial-gradient(1px 1px at 20% 30%, rgba(255, 255, 255, 0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 40% 70%, rgba(255, 255, 255, 0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 60% 20%, rgba(255, 255, 255, 0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 80% 50%, rgba(255, 255, 255, 0.2) 0%, transparent 100%),
+    radial-gradient(1.5px 1.5px at 10% 80%, rgba(255, 255, 255, 0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 70% 90%, rgba(255, 255, 255, 0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 90% 10%, rgba(255, 255, 255, 0.25) 0%, transparent 100%),
+    radial-gradient(1px 1px at 30% 50%, rgba(255, 255, 255, 0.2) 0%, transparent 100%),
+    radial-gradient(1px 1px at 50% 40%, rgba(255, 255, 255, 0.15) 0%, transparent 100%);
+}
+
+/* ============================================
+   LIGHT MODE
+   Flips bg/text/card/border while keeping
+   accent, shapes, animations, fonts intact.
+   ============================================ */
+
+/* Base light mode (no theme or indigo) */
+[data-mode="light"] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #e2e8f0;
+  --bg-card: #ffffff;
+  --text-primary: #1e293b;
+  --text-secondary: #64748b;
+  --border: #cbd5e1;
+  --bg-gradient: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="indigo"][data-mode="light"] {
+  --bg-primary: #eef2ff;
+  --bg-secondary: #e0e7ff;
+  --bg-card: #ffffff;
+  --text-primary: #1e1b4b;
+  --text-secondary: #4338ca;
+  --border: #c7d2fe;
+  --accent-glow: #6366f130;
+  --bg-gradient: linear-gradient(180deg, #eef2ff 0%, #e0e7ff 100%);
+  --card-shadow: 0 2px 8px rgba(99, 102, 241, 0.1);
+}
+
+[data-theme="emerald"][data-mode="light"] {
+  --bg-primary: #ecfdf5;
+  --bg-secondary: #d1fae5;
+  --bg-card: #ffffff;
+  --text-primary: #064e3b;
+  --text-secondary: #047857;
+  --border: #a7f3d0;
+  --accent-glow: #10b98130;
+  --bg-gradient: linear-gradient(160deg, #ecfdf5 0%, #d1fae5 100%);
+  --card-shadow: 0 2px 8px rgba(16, 185, 129, 0.1);
+}
+
+[data-theme="rose"][data-mode="light"] {
+  --bg-primary: #fff1f2;
+  --bg-secondary: #ffe4e6;
+  --bg-card: #ffffff;
+  --text-primary: #4c0519;
+  --text-secondary: #be123c;
+  --border: #fecdd3;
+  --accent-glow: #f43f5e25;
+  --bg-gradient: linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%);
+  --card-shadow: 0 2px 8px rgba(244, 63, 94, 0.1);
+}
+
+[data-theme="amber"][data-mode="light"] {
+  --bg-primary: #fffbeb;
+  --bg-secondary: #fef3c7;
+  --bg-card: #ffffff;
+  --text-primary: #451a03;
+  --text-secondary: #92400e;
+  --border: #fde68a;
+  --accent-glow: #f59e0b25;
+  --bg-gradient: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+  --card-shadow: 0 2px 8px rgba(245, 158, 11, 0.1);
+}
+
+[data-theme="cyan"][data-mode="light"] {
+  --bg-primary: #ecfeff;
+  --bg-secondary: #cffafe;
+  --bg-card: #ffffff;
+  --text-primary: #164e63;
+  --text-secondary: #0e7490;
+  --border: #a5f3fc;
+  --accent-glow: #06b6d425;
+  --bg-gradient: linear-gradient(180deg, #ecfeff 0%, #cffafe 100%);
+  --card-shadow: 0 2px 8px rgba(6, 182, 212, 0.1);
+}
+
+[data-theme="violet"][data-mode="light"] {
+  --bg-primary: #f5f3ff;
+  --bg-secondary: #ede9fe;
+  --bg-card: #ffffff;
+  --text-primary: #2e1065;
+  --text-secondary: #6d28d9;
+  --border: #ddd6fe;
+  --accent-glow: #8b5cf630;
+  --bg-gradient: linear-gradient(160deg, #f5f3ff 0%, #ede9fe 100%);
+  --card-shadow: 0 2px 8px rgba(139, 92, 246, 0.1);
+}
+
+[data-theme="synthwave"][data-mode="light"] {
+  --bg-primary: #fdf2f8;
+  --bg-secondary: #fce7f3;
+  --bg-card: #ffffff;
+  --text-primary: #500724;
+  --text-secondary: #a21caf;
+  --border: #f9a8d4;
+  --accent-glow: #f472b630;
+  --bg-gradient: linear-gradient(180deg, #fdf2f8 0%, #fce7f3 50%, #f5f3ff 100%);
+  --card-shadow: 0 2px 12px rgba(244, 114, 182, 0.15);
+}
+
+[data-theme="startrek"][data-mode="light"] {
+  --bg-primary: #fffef5;
+  --bg-secondary: #fef9e7;
+  --bg-card: #ffffff;
+  --text-primary: #422006;
+  --text-secondary: #92400e;
+  --border: #fde68a;
+  --accent-glow: #f59f0030;
+  --bg-gradient: linear-gradient(180deg, #fffef5 0%, #fef9e7 100%);
+  --card-shadow: 0 2px 8px rgba(245, 159, 0, 0.1);
+}
+
+[data-theme="sunset"][data-mode="light"] {
+  --bg-primary: #fff7ed;
+  --bg-secondary: #ffedd5;
+  --bg-card: #ffffff;
+  --text-primary: #431407;
+  --text-secondary: #9a3412;
+  --border: #fed7aa;
+  --accent-glow: #ea580c25;
+  --bg-gradient: linear-gradient(180deg, #fff7ed 0%, #ffedd5 100%);
+  --card-shadow: 0 2px 8px rgba(234, 88, 12, 0.1);
+}
+
+[data-theme="slate"][data-mode="light"] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --bg-card: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --border: #e2e8f0;
+  --accent-glow: #94a3b820;
+  --bg-gradient: none;
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Light mode: tone down neon effects */
+[data-theme="synthwave"][data-mode="light"] .btn-answer.selected {
+  background: linear-gradient(135deg, #f472b6, #c084fc);
+  box-shadow: 0 0 15px rgba(244, 114, 182, 0.3);
+  color: #ffffff;
+}
+
+[data-theme="synthwave"][data-mode="light"] h1,
+[data-theme="synthwave"][data-mode="light"] h2 {
+  text-shadow: none;
+  color: #a21caf;
+}
+
+[data-theme="startrek"][data-mode="light"] h1,
+[data-theme="startrek"][data-mode="light"] h2 {
+  text-shadow: none;
+  color: #92400e;
+}
+
+/* Light mode: adjust cards */
+[data-mode="light"] .card {
+  background: #ffffff;
+  box-shadow: var(--card-shadow);
+}
+
+[data-theme="startrek"][data-mode="light"] .card {
+  background: #ffffff;
+  border-left: 4px solid var(--accent);
+}
+
+[data-theme="synthwave"][data-mode="light"] .card {
+  animation: none;
+  border: 1px solid #f9a8d4;
+  background: #ffffff;
+}
+
+[data-theme="emerald"][data-mode="light"] .card {
+  backdrop-filter: none;
+  background: #ffffff;
+}
+
+/* Light mode: btn-answer base */
+[data-mode="light"] .btn-answer {
+  background-color: var(--bg-card);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+[data-mode="light"] .btn-answer:hover {
+  border-color: var(--accent);
+  background-color: var(--bg-secondary);
+}
+[data-mode="light"] .btn-answer.selected {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+/* Light mode: input styling */
+[data-mode="light"] input[type="text"],
+[data-mode="light"] input[type="number"] {
+  background-color: #ffffff;
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+[data-mode="light"] input[type="text"]:focus,
+[data-mode="light"] input[type="number"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }

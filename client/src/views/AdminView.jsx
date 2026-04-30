@@ -2,16 +2,16 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 const THEMES = [
-  { id: 'indigo', label: 'Indigo', color: '#6366f1' },
-  { id: 'emerald', label: 'Emerald', color: '#10b981' },
-  { id: 'rose', label: 'Rose', color: '#f43f5e' },
-  { id: 'amber', label: 'Amber', color: '#f59e0b' },
-  { id: 'cyan', label: 'Cyan', color: '#06b6d4' },
-  { id: 'violet', label: 'Violet', color: '#8b5cf6' },
-  { id: 'synthwave', label: 'Synthwave', color: '#f472b6' },
-  { id: 'startrek', label: 'Star Trek', color: '#c9a227' },
-  { id: 'sunset', label: 'Sunset', color: '#ea580c' },
-  { id: 'slate', label: 'Slate', color: '#64748b' },
+  { id: 'indigo', label: 'Indigo', accent: '#6366f1', bg: '#0f172a', card: '#1e293b', text: '#f1f5f9', desc: 'Clean & modern' },
+  { id: 'emerald', label: 'Emerald', accent: '#10b981', bg: '#021a13', card: 'rgba(6,78,59,0.5)', text: '#ecfdf5', desc: 'Forest glass' },
+  { id: 'rose', label: 'Rose', accent: '#f43f5e', bg: '#1a0510', card: 'rgba(45,10,26,0.8)', text: '#fff1f2', desc: 'Soft & warm' },
+  { id: 'amber', label: 'Amber', accent: '#f59e0b', bg: '#1a1000', card: 'rgba(45,28,4,0.8)', text: '#fffbeb', desc: 'Golden warmth' },
+  { id: 'cyan', label: 'Cyan', accent: '#06b6d4', bg: '#041c24', card: 'rgba(10,46,58,0.6)', text: '#ecfeff', desc: 'Ice & tech' },
+  { id: 'violet', label: 'Violet', accent: '#8b5cf6', bg: '#0a0520', card: 'rgba(21,13,48,0.8)', text: '#f5f3ff', desc: 'Deep mystic' },
+  { id: 'synthwave', label: 'Synthwave', accent: '#f472b6', bg: '#0d001a', card: 'rgba(45,27,78,0.8)', text: '#fce7f3', desc: 'Neon retro' },
+  { id: 'startrek', label: 'Star Trek', accent: '#f59f00', bg: '#000000', card: 'rgba(10,10,30,0.9)', text: '#ff9500', desc: 'LCARS angular' },
+  { id: 'sunset', label: 'Sunset', accent: '#ea580c', bg: '#1a0800', card: 'rgba(45,20,8,0.8)', text: '#fff7ed', desc: 'Warm horizon' },
+  { id: 'slate', label: 'Slate', accent: '#94a3b8', bg: '#0f1419', card: '#1c2128', text: '#e6edf3', desc: 'Minimal & clean' },
 ];
 
 const QUESTION_TYPES = [
@@ -81,9 +81,19 @@ export default function AdminView() {
     await fetch(`/api/quiz/${adminToken}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: quiz.title, themeColor: color, logoUrl: quiz.logoUrl })
+      body: JSON.stringify({ title: quiz.title, themeColor: color, lightMode: quiz.lightMode, logoUrl: quiz.logoUrl })
     });
     setQuiz({ ...quiz, themeColor: color });
+  };
+
+  const toggleLightMode = async () => {
+    const newMode = !quiz.lightMode;
+    await fetch(`/api/quiz/${adminToken}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: quiz.title, themeColor: quiz.themeColor, lightMode: newMode, logoUrl: quiz.logoUrl })
+    });
+    setQuiz({ ...quiz, lightMode: newMode });
   };
 
   const deleteSession = async (sessionId) => {
@@ -111,25 +121,60 @@ export default function AdminView() {
       {/* Theme Picker */}
       <div className="mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
         <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wide">Theme</h3>
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
           {THEMES.map(t => (
             <button
               key={t.id}
-              onClick={() => updateTheme(t.color)}
-              className={`w-8 h-8 rounded-full border-2 transition ${quiz.themeColor === t.color ? 'border-white scale-110' : 'border-transparent hover:border-gray-500'}`}
-              style={{ backgroundColor: t.color }}
-              title={t.label}
-            />
+              onClick={() => updateTheme(t.id)}
+              className={`relative rounded-lg overflow-hidden border-2 transition-all ${quiz.themeColor === t.id ? 'border-white ring-2 ring-white/30 scale-[1.02]' : 'border-gray-600 hover:border-gray-400'}`}
+            >
+              {/* Mini preview */}
+              <div className="p-2 h-24" style={{ background: t.bg }}>
+                <div className="text-[9px] font-bold mb-1 truncate" style={{ color: t.text }}>{t.label}</div>
+                <div className="rounded px-1.5 py-0.5 mb-1 text-[8px]" style={{ background: t.card, border: `1px solid ${t.accent}40`, color: t.text }}>
+                  Sample Q?
+                </div>
+                <div className="flex gap-1">
+                  <div className="flex-1 rounded py-0.5 text-[7px] text-center" style={{ background: t.accent, color: '#fff' }}>A</div>
+                  <div className="flex-1 rounded py-0.5 text-[7px] text-center" style={{ border: `1px solid ${t.accent}`, color: t.text }}>B</div>
+                </div>
+              </div>
+              {/* Label */}
+              <div className="px-2 py-1.5 bg-gray-900 text-center">
+                <span className="text-xs font-medium text-gray-200">{t.label}</span>
+                <span className="block text-[10px] text-gray-500">{t.desc}</span>
+              </div>
+              {/* Selected check */}
+              {quiz.themeColor === t.id && (
+                <div className="absolute top-1 right-1 w-5 h-5 bg-white rounded-full flex items-center justify-center">
+                  <span className="text-xs text-gray-900">✓</span>
+                </div>
+              )}
+            </button>
           ))}
-          <label className="flex items-center gap-2 ml-2">
+        </div>
+        {/* Custom color option */}
+        <div className="flex items-center gap-3 mt-3 pt-3 border-t border-gray-700">
+          <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="color"
-              value={quiz.themeColor || '#6366f1'}
+              value={quiz.themeColor?.startsWith('#') ? quiz.themeColor : '#6366f1'}
               onChange={(e) => updateTheme(e.target.value)}
-              className="w-8 h-8 rounded-full cursor-pointer border-0 bg-transparent"
+              className="w-8 h-8 rounded cursor-pointer border-0 bg-transparent"
             />
-            <span className="text-xs text-gray-500">Custom</span>
+            <span className="text-sm text-gray-400">Custom accent color</span>
           </label>
+          {quiz.themeColor?.startsWith('#') && (
+            <span className="text-xs text-gray-500 font-mono">{quiz.themeColor}</span>
+          )}
+          {/* Dark/Light toggle */}
+          <button
+            onClick={toggleLightMode}
+            className={`ml-auto flex items-center gap-2 px-4 py-2 rounded-lg border transition ${quiz.lightMode ? 'bg-yellow-50 border-yellow-300 text-yellow-800' : 'bg-gray-700 border-gray-600 text-gray-300'}`}
+          >
+            <span className="text-lg">{quiz.lightMode ? '☀️' : '🌙'}</span>
+            <span className="text-sm font-medium">{quiz.lightMode ? 'Light' : 'Dark'}</span>
+          </button>
         </div>
       </div>
 

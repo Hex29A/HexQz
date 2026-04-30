@@ -10,6 +10,7 @@ Real-time quiz platform. Create quizzes, control the pace, players join via QR c
 - **Team support** — optional team names for group play
 - **Live scoreboard** — scores update after each question
 - **Self-healing connections** — survives WiFi drops, backgrounded tabs, network switches
+- **Themed quizzes** — 10 preset themes (Synthwave, Star Trek, Emerald, etc.) with dark/light mode
 - **Per-quiz branding** — custom colors and logos per quiz
 - **Session history** — view past results, export as CSV
 - **Multi-quiz** — run multiple quizzes simultaneously
@@ -20,10 +21,43 @@ Real-time quiz platform. Create quizzes, control the pace, players join via QR c
 git clone https://github.com/Hex29A/HexQz.git
 cd HexQz
 cp .env.example .env
+# Edit .env — at minimum set ADMIN_SECRET
 docker compose up -d
 ```
 
 Open `http://localhost:3042` — that's it.
+
+## Running with Dockge
+
+[Dockge](https://github.com/louislam/dockge) is a self-hosted Docker Compose manager with a web UI.
+
+1. In Dockge, click **"+ Compose"**
+2. Give it a name (e.g. `hexqz`)
+3. Paste this compose file:
+
+```yaml
+services:
+  quiz:
+    build: https://github.com/Hex29A/HexQz.git
+    ports:
+      - "3042:3042"
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    environment:
+      - NODE_ENV=production
+      - PORT=3042
+      - DB_PATH=/app/data/hexqz.sqlite
+      - BASE_URL=https://your-domain.com
+      - ADMIN_SECRET=change-me-to-something-secret
+      - PLATFORM_NAME=hexqz
+    restart: unless-stopped
+```
+
+4. Edit the environment variables (at minimum `ADMIN_SECRET` and `BASE_URL`)
+5. Click **Deploy**
+
+Dockge will clone the repo, build the image, and start the container. Data persists in the `data/` and `uploads/` volumes relative to your Dockge stack directory.
 
 ## How It Works
 

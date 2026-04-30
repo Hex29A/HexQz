@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import socket from '../socket.js';
+import { applyTheme } from '../theme.js';
 
 export default function LobbyView() {
   const { sessionId } = useParams();
@@ -36,6 +37,7 @@ export default function LobbyView() {
 
     // Initial state check
     fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
+      if (data.themeColor) applyTheme(data.themeColor, data.lightMode);
       if (data.status === 'active') navigate(`/game/${sessionId}`);
       if (data.status === 'finished') navigate(`/results/${sessionId}`);
       if (data.participants) setParticipantCount(data.participants.length);
@@ -52,9 +54,9 @@ export default function LobbyView() {
     <div className="flex flex-col items-center justify-center min-h-screen p-6">
       <div className="animate-pulse text-6xl mb-6">🎯</div>
       <h1 className="text-3xl font-bold mb-4">You're in!</h1>
-      <p className="text-gray-400 text-lg">Waiting for the host to start...</p>
+      <p className="text-text-secondary text-lg">Waiting for the host to start...</p>
       {participantCount > 0 && (
-        <p className="text-gray-500 mt-4">{participantCount} player{participantCount !== 1 ? 's' : ''} ready</p>
+        <p className="text-text-secondary mt-4">{participantCount} player{participantCount !== 1 ? 's' : ''} ready</p>
       )}
     </div>
   );

@@ -18,5 +18,6 @@ db.exec(schema);
 
 // Add columns if missing (safe migrations)
 try { db.exec('ALTER TABLE quiz ADD COLUMN archived INTEGER DEFAULT 0'); } catch {}
+try { db.exec('ALTER TABLE quiz ADD COLUMN light_mode INTEGER DEFAULT 0'); } catch {}
 
 export default db;

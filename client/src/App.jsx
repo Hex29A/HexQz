@@ -7,10 +7,12 @@ import JoinView from './views/JoinView.jsx';
 import LobbyView from './views/LobbyView.jsx';
 import GameView from './views/GameView.jsx';
 import ResultsView from './views/ResultsView.jsx';
+import ThemeOverlay from './components/ThemeOverlay.jsx';
 
 export default function App() {
   return (
     <BrowserRouter>
+      <ThemeOverlay />
       <Routes>
         <Route path="/" element={<LandingView />} />
         <Route path="/admin" element={<AdminDashboardView />} />

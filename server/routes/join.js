@@ -31,7 +31,7 @@ router.get('/status', (req, res) => {
 router.get('/join/:joinCode', (req, res) => {
   const joinCode = req.params.joinCode.toUpperCase();
   const session = db.prepare(`
-    SELECT s.*, q.title, q.theme_color, q.logo_url FROM session s
+    SELECT s.*, q.title, q.theme_color, q.light_mode, q.logo_url FROM session s
     JOIN quiz q ON q.id = s.quiz_id
     WHERE s.join_code = ?
   `).get(joinCode);
@@ -44,6 +44,7 @@ router.get('/join/:joinCode', (req, res) => {
     quizTitle: session.title,
     status: session.status,
     themeColor: session.theme_color,
+    lightMode: !!session.light_mode,
     logoUrl: session.logo_url
   });
 });
