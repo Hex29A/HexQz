@@ -1,6 +1,37 @@
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
+import multer from 'multer';
+import { join, dirname, extname } from 'path';
+import { fileURLToPath } from 'url';
+import { mkdirSync } from 'fs';
 import db from '../db/db.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const uploadsDir = join(__dirname, '..', '..', 'uploads');
+mkdirSync(uploadsDir, { recursive: true });
+
+const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const ext = extname(file.originalname).toLowerCase();
+    cb(null, `${randomUUID()}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const ext = extname(file.originalname).toLowerCase();
+    if (ALLOWED_EXTENSIONS.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Allowed: jpg, png, gif, webp'));
+    }
+  }
+});
 
 const router = Router();
 
@@ -40,15 +71,22 @@ router.get('/admin/quizzes', (req, res) => {
     ORDER BY q.created_at DESC
   `).all();
 
-  res.json(quizzes.map(q => ({
-    id: q.id,
-    title: q.title,
-    adminToken: q.admin_token,
-    themeColor: q.theme_color,
-    logoUrl: q.logo_url,
-    createdAt: q.created_at,
-    sessionCount: q.session_count
-  })));
+  res.json(quizzes.map(q => {
+    const latestSession = db.prepare(
+      'SELECT id, status FROM session WHERE quiz_id = ? ORDER BY created_at DESC LIMIT 1'
+    ).get(q.id);
+    return {
+      id: q.id,
+      title: q.title,
+      adminToken: q.admin_token,
+      themeColor: q.theme_color,
+      logoUrl: q.logo_url,
+      createdAt: q.created_at,
+      sessionCount: q.session_count,
+      latestSessionId: latestSession?.id || null,
+      latestSessionStatus: latestSession?.status || null
+    };
+  }));
 });
 
 // --- Quiz CRUD ---
@@ -132,6 +170,17 @@ router.delete('/quiz/:adminToken', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
 
+  // Manual cascade: delete responses → participants → sessions → answers → questions → quiz
+  const sessions = db.prepare('SELECT id FROM session WHERE quiz_id = ?').all(quiz.id);
+  for (const s of sessions) {
+    const participants = db.prepare('SELECT id FROM participant WHERE session_id = ?').all(s.id);
+    for (const p of participants) {
+      db.prepare('DELETE FROM response WHERE participant_id = ?').run(p.id);
+    }
+    db.prepare('DELETE FROM participant WHERE session_id = ?').run(s.id);
+  }
+  db.prepare('DELETE FROM session WHERE quiz_id = ?').run(quiz.id);
+  // questions and answers cascade from schema
   db.prepare('DELETE FROM quiz WHERE id = ?').run(quiz.id);
   res.json({ ok: true });
 });
@@ -211,6 +260,21 @@ router.delete('/quiz/:adminToken/question/:questionId', (req, res) => {
 
   db.prepare('DELETE FROM question WHERE id = ?').run(question.id);
   res.json({ ok: true });
+});
+
+// --- Image Upload ---
+
+router.post('/upload', (req, res) => {
+  upload.single('image')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File too large (max 10MB)' });
+      }
+      return res.status(400).json({ error: err.message });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    res.json({ url: `/uploads/${req.file.filename}` });
+  });
 });
 
 export default router;

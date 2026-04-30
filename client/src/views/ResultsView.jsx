@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import Scoreboard from '../components/Scoreboard.jsx';
 
 export default function ResultsView() {
   const { sessionId } = useParams();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const adminToken = searchParams.get('token');
   const [results, setResults] = useState(null);
   const participantId = sessionStorage.getItem('participantId');
 
@@ -20,6 +23,15 @@ export default function ResultsView() {
 
   return (
     <div className="max-w-2xl mx-auto p-6">
+      {adminToken && (
+        <nav className="mb-6 text-sm text-gray-400">
+          <a href="/admin" onClick={(e) => { e.preventDefault(); navigate('/admin'); }} className="hover:text-white transition">Dashboard</a>
+          <span className="mx-2">/</span>
+          <a href={`/admin/${adminToken}`} onClick={(e) => { e.preventDefault(); navigate(`/admin/${adminToken}`); }} className="hover:text-white transition">Quiz</a>
+          <span className="mx-2">/</span>
+          <span className="text-white">Results</span>
+        </nav>
+      )}
       <h1 className="text-3xl font-bold text-center mb-2">{results.quizTitle}</h1>
       <p className="text-gray-400 text-center mb-8">Final Results</p>
 

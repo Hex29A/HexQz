@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import socket from '../socket.js';
 import Scoreboard from '../components/Scoreboard.jsx';
@@ -7,10 +7,11 @@ import Scoreboard from '../components/Scoreboard.jsx';
 export default function HostView() {
   const { sessionId } = useParams();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const adminToken = searchParams.get('token');
   const [state, setState] = useState(null);
   const [participants, setParticipants] = useState([]);
-  const [answerCount, setAnswerCount] = useState({ count: 0, total: 0 });
+  const [answerCount, setAnswerCount] = useState({ count: 0, total: 0, answered: [], waiting: [] });
   const [scores, setScores] = useState([]);
   const [started, setStarted] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState(null);
@@ -19,6 +20,8 @@ export default function HostView() {
   const [finished, setFinished] = useState(false);
   const [connected, setConnected] = useState(true);
   const [showReview, setShowReview] = useState(false);
+  const [questions, setQuestions] = useState([]);
+  const [reviewQuestionId, setReviewQuestionId] = useState(null);
 
   useEffect(() => {
     // Load initial state
@@ -34,6 +37,7 @@ export default function HostView() {
       }
       if (data.status === 'finished') {
         setFinished(true);
+        if (data.questions) setQuestions(data.questions);
       }
     });
 
@@ -54,7 +58,10 @@ export default function HostView() {
           setQuestionIndex(data.questionIndex);
           setTotalQuestions(data.totalQuestions);
         }
-        if (data.status === 'finished') setFinished(true);
+        if (data.status === 'finished') {
+          setFinished(true);
+          if (data.questions) setQuestions(data.questions);
+        }
       });
     });
 
@@ -71,18 +78,18 @@ export default function HostView() {
       setCurrentQuestion(data.question);
       setQuestionIndex(data.questionIndex);
       setTotalQuestions(data.totalQuestions);
-      setAnswerCount({ count: 0, total: 0 });
+      setAnswerCount({ count: 0, total: 0, answered: [], waiting: [] });
     });
 
     socket.on('session:question', (data) => {
       setCurrentQuestion(data.question);
       setQuestionIndex(data.questionIndex);
       setTotalQuestions(data.totalQuestions);
-      setAnswerCount({ count: 0, total: 0 });
+      setAnswerCount({ count: 0, total: 0, answered: [], waiting: [] });
     });
 
     socket.on('session:answer_count', (data) => {
-      setAnswerCount({ count: data.count, total: data.total });
+      setAnswerCount({ count: data.count, total: data.total, answered: data.answered || [], waiting: data.waiting || [] });
     });
 
     socket.on('session:scores', (data) => {
@@ -126,6 +133,12 @@ export default function HostView() {
   };
 
   const nextQuestion = async () => {
+    if (answerCount.total > 0 && answerCount.count < answerCount.total) {
+      const remaining = answerCount.total - answerCount.count;
+      if (!confirm(`${remaining} player${remaining > 1 ? 's' : ''} haven't answered yet. Continue anyway?`)) {
+        return;
+      }
+    }
     await fetch(`/api/session/${sessionId}/next`, {
       method: 'POST',
       headers: { 'X-Admin-Token': adminToken }
@@ -144,13 +157,51 @@ export default function HostView() {
   if (finished) {
     return (
       <div className="max-w-2xl mx-auto p-6">
+        <nav className="mb-6 text-sm text-gray-400">
+          <a href="/admin" onClick={(e) => { e.preventDefault(); navigate('/admin'); }} className="hover:text-white transition">Dashboard</a>
+          <span className="mx-2">/</span>
+          <a href={`/admin/${adminToken}`} onClick={(e) => { e.preventDefault(); navigate(`/admin/${adminToken}`); }} className="hover:text-white transition">Quiz</a>
+          <span className="mx-2">/</span>
+          <span className="text-white">Session</span>
+        </nav>
         {!connected && <div className="bg-red-900 text-red-200 text-center py-2 px-4 rounded-lg mb-4 text-sm">Reconnecting...</div>}
         <h1 className="text-3xl font-bold mb-6 text-center">Quiz Finished!</h1>
         <div className="mb-6 flex justify-center">
           <QRCodeSVG value={`${window.location.origin}/results/${sessionId}`} size={200} bgColor="transparent" fgColor="white" />
         </div>
-        <p className="text-center text-gray-400 mb-6">Scan for results</p>
+        <p className="text-center text-gray-400 mb-2">Scan for results</p>
+        <p className="text-center mb-6">
+          <a href={`/results/${sessionId}`} className="text-accent hover:underline font-mono text-sm">{window.location.origin}/results/{sessionId}</a>
+        </p>
         <Scoreboard scores={scores} />
+
+        {questions.length > 0 && (
+          <div className="mt-8">
+            <h2 className="text-xl font-bold mb-4">Review Answers</h2>
+            <div className="flex flex-col gap-2">
+              {questions.map((q, i) => (
+                <button
+                  key={q.id}
+                  onClick={() => { setReviewQuestionId(q.id); setShowReview(true); }}
+                  className="text-left p-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition"
+                >
+                  <span className="text-gray-400 text-sm mr-2">Q{i + 1}</span>
+                  <span>{q.text}</span>
+                  <span className="text-gray-500 text-xs ml-2">({q.type})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {showReview && reviewQuestionId && (
+          <ReviewPanel
+            sessionId={sessionId}
+            adminToken={adminToken}
+            questionId={reviewQuestionId}
+            onClose={() => { setShowReview(false); setReviewQuestionId(null); }}
+          />
+        )}
       </div>
     );
   }
@@ -158,6 +209,13 @@ export default function HostView() {
   if (!started) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-6">
+        <nav className="absolute top-4 left-4 text-sm text-gray-400">
+          <a href="/admin" onClick={(e) => { e.preventDefault(); navigate('/admin'); }} className="hover:text-white transition">Dashboard</a>
+          <span className="mx-2">/</span>
+          <a href={`/admin/${adminToken}`} onClick={(e) => { e.preventDefault(); navigate(`/admin/${adminToken}`); }} className="hover:text-white transition">Quiz</a>
+          <span className="mx-2">/</span>
+          <span className="text-white">Lobby</span>
+        </nav>
         <h1 className="text-3xl font-bold mb-8">Waiting for players...</h1>
         <div className="mb-4">
           <QRCodeSVG value={joinUrl} size={250} bgColor="transparent" fgColor="white" />
@@ -184,11 +242,37 @@ export default function HostView() {
 
   return (
     <div className="max-w-2xl mx-auto p-6">
+      <nav className="mb-4 text-sm text-gray-400">
+        <a href="/admin" onClick={(e) => { e.preventDefault(); navigate('/admin'); }} className="hover:text-white transition">Dashboard</a>
+        <span className="mx-2">/</span>
+        <a href={`/admin/${adminToken}`} onClick={(e) => { e.preventDefault(); navigate(`/admin/${adminToken}`); }} className="hover:text-white transition">Quiz</a>
+        <span className="mx-2">/</span>
+        <span className="text-white">Live</span>
+      </nav>
       {!connected && <div className="bg-red-900 text-red-200 text-center py-2 px-4 rounded-lg mb-4 text-sm">Reconnecting...</div>}
-      <div className="flex justify-between items-center mb-4">
+      <div className="flex justify-between items-center mb-2">
         <span className="text-gray-400">Question {questionIndex + 1} of {totalQuestions}</span>
-        <span className="text-gray-400">{answerCount.count}/{answerCount.total || participants.length} answered</span>
+        <span className={`font-semibold ${answerCount.count > 0 && answerCount.count === answerCount.total ? 'text-green-400' : 'text-gray-400'}`}>
+          {answerCount.count}/{answerCount.total || participants.length} answered
+          {answerCount.count > 0 && answerCount.count === answerCount.total && ' — All in!'}
+        </span>
       </div>
+
+      {/* Progress bar */}
+      <div className="w-full h-2 bg-gray-700 rounded-full mb-3 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-300 ${answerCount.count === answerCount.total && answerCount.total > 0 ? 'bg-green-500' : 'bg-accent'}`}
+          style={{ width: `${answerCount.total ? (answerCount.count / answerCount.total) * 100 : 0}%` }}
+        />
+      </div>
+
+      {/* Waiting for */}
+      {answerCount.waiting.length > 0 && (
+        <div className="mb-4 text-sm">
+          <span className="text-gray-500">Waiting for: </span>
+          <span className="text-gray-400">{answerCount.waiting.join(', ')}</span>
+        </div>
+      )}
 
       {currentQuestion && (
         <div className="bg-gray-800 rounded-xl p-6 mb-6">
@@ -264,13 +348,14 @@ function ReviewPanel({ sessionId, adminToken, questionId, onClose }) {
           <p className="text-gray-500">No answers yet</p>
         ) : (
           <div className="flex flex-col gap-2">
-            {responses.filter(r => r.textAnswer).map(r => (
+            {responses.map(r => (
               <div key={r.id} className={`flex items-center justify-between p-3 rounded-lg border ${
                 r.isCorrect ? 'bg-green-900/30 border-green-800' : r.reviewed ? 'bg-red-900/30 border-red-800' : 'bg-gray-700 border-gray-600'
               }`}>
                 <div className="flex-1">
                   <span className="text-sm text-gray-400">{r.displayName}</span>
-                  <p className="font-medium">{formatAnswer(r.textAnswer)}</p>
+                  <p className="font-medium">{r.answerText || formatAnswer(r.textAnswer) || <span className="text-gray-500 italic">No answer</span>}</p>
+                  {r.pointsAwarded > 0 && <span className="text-xs text-green-400">+{r.pointsAwarded} pts</span>}
                 </div>
                 <div className="flex gap-2 ml-4">
                   <button

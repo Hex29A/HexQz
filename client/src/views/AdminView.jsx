@@ -50,6 +50,11 @@ export default function AdminView() {
 
   return (
     <div className="max-w-2xl mx-auto p-6">
+      <nav className="mb-6 text-sm text-gray-400">
+        <a href="/admin" onClick={(e) => { e.preventDefault(); navigate('/admin'); }} className="hover:text-white transition">Dashboard</a>
+        <span className="mx-2">/</span>
+        <span className="text-white">{quiz.title}</span>
+      </nav>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">{quiz.title}</h1>
         <button onClick={startSession} className="px-6 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition">
@@ -95,26 +100,36 @@ export default function AdminView() {
           <h2 className="text-xl font-bold mb-3">Sessions</h2>
           <div className="flex flex-col gap-2">
             {sessions.map(s => (
-              <div key={s.id} className="flex items-center justify-between p-3 bg-gray-800 rounded-lg border border-gray-700">
-                <div>
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold mr-2 ${
-                    s.status === 'active' ? 'bg-green-900 text-green-300' :
-                    s.status === 'waiting' ? 'bg-yellow-900 text-yellow-300' :
-                    'bg-gray-700 text-gray-400'
-                  }`}>{s.status}</span>
-                  <span className="font-mono text-sm">{s.joinCode}</span>
-                  <span className="text-gray-500 text-sm ml-3">{s.participantCount} players</span>
-                </div>
-                <div className="flex gap-2">
-                  {(s.status === 'waiting' || s.status === 'active') && (
-                    <button onClick={() => navigate(`/host/${s.id}?token=${adminToken}`)} className="text-sm text-accent hover:underline">
-                      Host
+              <div key={s.id} className="p-3 bg-gray-800 rounded-lg border border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${
+                      s.status === 'active' ? 'bg-green-900 text-green-300' :
+                      s.status === 'waiting' ? 'bg-yellow-900 text-yellow-300' :
+                      'bg-gray-700 text-gray-400'
+                    }`}>{s.status}</span>
+                    <span className="font-mono text-sm">{s.joinCode}</span>
+                    <span className="text-gray-500 text-sm">{s.participantCount} players</span>
+                  </div>
+                  <div className="flex gap-3">
+                    {(s.status === 'waiting' || s.status === 'active') && (
+                      <button onClick={() => navigate(`/host/${s.id}?token=${adminToken}`)} className="text-sm text-accent hover:underline">
+                        Host
+                      </button>
+                    )}
+                    {s.status === 'finished' && (
+                      <button onClick={() => navigate(`/host/${s.id}?token=${adminToken}`)} className="text-sm text-yellow-400 hover:underline">
+                        Review
+                      </button>
+                    )}
+                    <button onClick={() => navigate(`/results/${s.id}?token=${adminToken}`)} className="text-sm text-gray-400 hover:text-white">
+                      Results
                     </button>
-                  )}
-                  <button onClick={() => navigate(`/results/${s.id}`)} className="text-sm text-gray-400 hover:text-white">
-                    Results
-                  </button>
+                  </div>
                 </div>
+                {s.winner && (
+                  <p className="text-sm text-gray-400 mt-1">Winner: <span className="text-white">{s.winner.name}</span> <span className="text-gray-500">({s.winner.score} pts)</span></p>
+                )}
               </div>
             ))}
           </div>
@@ -136,6 +151,7 @@ export default function AdminView() {
 function QuestionForm({ adminToken, question, onDone, onCancel }) {
   const [text, setText] = useState(question?.text || '');
   const [imageUrl, setImageUrl] = useState(question?.imageUrl || '');
+  const [uploading, setUploading] = useState(false);
   const [type, setType] = useState(question?.type || 'single_choice');
   const [answers, setAnswers] = useState(
     question?.answers?.map(a => ({ text: a.text, isCorrect: a.isCorrect, partLabel: a.partLabel })) ||
@@ -219,14 +235,7 @@ function QuestionForm({ adminToken, question, onDone, onCancel }) {
             autoFocus
           />
 
-          <input
-            type="text"
-            placeholder="Image URL (optional)"
-            value={imageUrl}
-            onChange={e => setImageUrl(e.target.value)}
-            className="px-3 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent"
-          />
-          {imageUrl && <img src={imageUrl} alt="preview" className="max-h-32 rounded" onError={e => e.target.style.display = 'none'} />}
+          <ImageUpload imageUrl={imageUrl} setImageUrl={setImageUrl} uploading={uploading} setUploading={setUploading} />
 
           {showOptions && (
             <div className="flex flex-col gap-2">
@@ -358,6 +367,93 @@ function QuestionForm({ adminToken, question, onDone, onCancel }) {
           <button type="submit" className="flex-1 py-2 bg-accent rounded-lg hover:opacity-90 font-semibold transition">Save</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+function ImageUpload({ imageUrl, setImageUrl, uploading, setUploading }) {
+  const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState('');
+
+  const uploadFile = async (file) => {
+    if (!file) return;
+    setError('');
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('image', file);
+    try {
+      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (res.ok) {
+        setImageUrl(data.url);
+      } else {
+        setError(data.error || 'Upload failed');
+      }
+    } catch {
+      setError('Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) {
+      uploadFile(file);
+    } else {
+      setError('Only image files are allowed');
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) uploadFile(file);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        className={`relative border-2 border-dashed rounded-lg p-4 text-center transition cursor-pointer ${
+          dragOver ? 'border-accent bg-accent/10' : 'border-gray-600 hover:border-gray-500'
+        }`}
+        onClick={() => document.getElementById('image-file-input').click()}
+      >
+        {uploading ? (
+          <p className="text-gray-400 text-sm">Uploading...</p>
+        ) : (
+          <p className="text-gray-400 text-sm">Drop image here or click to select</p>
+        )}
+        <input
+          id="image-file-input"
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+      </div>
+      <input
+        type="text"
+        placeholder="Or paste image URL"
+        value={imageUrl}
+        onChange={e => setImageUrl(e.target.value)}
+        className="px-3 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent text-sm"
+      />
+      {error && <p className="text-red-400 text-xs">{error}</p>}
+      {imageUrl && (
+        <div className="relative inline-block">
+          <img src={imageUrl} alt="preview" className="max-h-32 rounded" onError={e => e.target.style.display = 'none'} />
+          <button
+            type="button"
+            onClick={() => setImageUrl('')}
+            className="absolute top-1 right-1 w-6 h-6 bg-black/70 rounded-full flex items-center justify-center text-white text-xs hover:bg-red-600 transition"
+          >&times;</button>
+        </div>
+      )}
     </div>
   );
 }

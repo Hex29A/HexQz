@@ -106,9 +106,8 @@ router.post('/answer', (req, res) => {
     return res.status(410).json({ error: 'Question is not current' });
   }
 
-  // Check duplicate
-  const existing = db.prepare('SELECT id FROM response WHERE participant_id = ? AND question_id = ?').get(participantId, questionId);
-  if (existing) return res.status(409).json({ error: 'Already answered' });
+  // Check for existing response (allow revision)
+  const existing = db.prepare('SELECT id, points_awarded FROM response WHERE participant_id = ? AND question_id = ?').get(participantId, questionId);
 
   // Validate textAnswer length
   if (textAnswer && textAnswer.length > 100) {
@@ -188,31 +187,51 @@ router.post('/answer', (req, res) => {
     }
   }
 
-  // Save response
-  const responseId = randomUUID();
-  db.prepare(`
-    INSERT INTO response (id, participant_id, question_id, answer_id, text_answer, is_correct, points_awarded)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(responseId, participantId, questionId, answerId || null, typeof textAnswer === 'object' ? JSON.stringify(textAnswer) : (textAnswer || null), isCorrect, points);
+  // Save or update response
+  const storedAnswerId = Array.isArray(answerId) ? answerId.join(',') : (answerId || null);
+  const storedTextAnswer = typeof textAnswer === 'object' ? JSON.stringify(textAnswer) : (textAnswer || null);
 
-  // Update score (not for estimation — scored later)
-  if (points > 0 && question.type !== 'estimation') {
-    db.prepare('UPDATE participant SET score = score + ? WHERE id = ?').run(points, participantId);
+  if (existing) {
+    // Revision: update existing response and adjust score
+    const oldPoints = existing.points_awarded || 0;
+    db.prepare(`
+      UPDATE response SET answer_id = ?, text_answer = ?, is_correct = ?, points_awarded = ?, answered_at = unixepoch()
+      WHERE id = ?
+    `).run(storedAnswerId, storedTextAnswer, isCorrect, points, existing.id);
+
+    const pointsDiff = points - oldPoints;
+    if (pointsDiff !== 0 && question.type !== 'estimation') {
+      db.prepare('UPDATE participant SET score = score + ? WHERE id = ?').run(pointsDiff, participantId);
+    }
+  } else {
+    // New response
+    const responseId = randomUUID();
+    db.prepare(`
+      INSERT INTO response (id, participant_id, question_id, answer_id, text_answer, is_correct, points_awarded)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(responseId, participantId, questionId, storedAnswerId, storedTextAnswer, isCorrect, points);
+
+    if (points > 0 && question.type !== 'estimation') {
+      db.prepare('UPDATE participant SET score = score + ? WHERE id = ?').run(points, participantId);
+    }
   }
 
-  // Emit answer count to host
+  // Emit answer count to session
   const io = req.app.get('io');
-  const answerCount = db.prepare(`
-    SELECT COUNT(*) as c FROM response r
+  const answered = db.prepare(`
+    SELECT p.display_name FROM response r
     JOIN participant p ON p.id = r.participant_id
     WHERE r.question_id = ? AND p.session_id = ?
-  `).get(questionId, session.id).c;
-  const totalParticipants = db.prepare('SELECT COUNT(*) as c FROM participant WHERE session_id = ?').get(session.id).c;
+  `).all(questionId, session.id).map(r => r.display_name);
+  const allParticipants = db.prepare('SELECT display_name FROM participant WHERE session_id = ?').all(session.id).map(p => p.display_name);
+  const waiting = allParticipants.filter(name => !answered.includes(name));
 
   io.to(`session:${session.id}`).emit('session:answer_count', {
     questionIndex: session.current_question_index,
-    count: answerCount,
-    total: totalParticipants
+    count: answered.length,
+    total: allParticipants.length,
+    answered,
+    waiting
   });
 
   res.json({ received: true });
@@ -231,7 +250,7 @@ router.get('/session/:sessionId/question/:questionId/responses', (req, res) => {
   if (!session || session.admin_token !== adminToken) return res.status(403).json({ error: 'Forbidden' });
 
   const responses = db.prepare(`
-    SELECT r.id, r.text_answer, r.is_correct, r.points_awarded, r.reviewed,
+    SELECT r.id, r.text_answer, r.answer_id, r.is_correct, r.points_awarded, r.reviewed,
            p.display_name, p.id as participant_id
     FROM response r
     JOIN participant p ON p.id = r.participant_id
@@ -239,15 +258,27 @@ router.get('/session/:sessionId/question/:questionId/responses', (req, res) => {
     ORDER BY r.answered_at
   `).all(req.params.questionId, req.params.sessionId);
 
-  res.json(responses.map(r => ({
-    id: r.id,
-    textAnswer: r.text_answer,
-    isCorrect: !!r.is_correct,
-    pointsAwarded: r.points_awarded,
-    reviewed: !!r.reviewed,
-    displayName: r.display_name,
-    participantId: r.participant_id
-  })));
+  // Resolve answer_id(s) to text
+  const allAnswers = db.prepare('SELECT id, text FROM answer WHERE question_id = ?').all(req.params.questionId);
+  const answerMap = Object.fromEntries(allAnswers.map(a => [a.id, a.text]));
+
+  res.json(responses.map(r => {
+    let answerText = null;
+    if (r.answer_id) {
+      // Could be comma-separated (multiple_choice)
+      answerText = r.answer_id.split(',').map(id => answerMap[id] || id).join(', ');
+    }
+    return {
+      id: r.id,
+      textAnswer: r.text_answer,
+      answerText,
+      isCorrect: !!r.is_correct,
+      pointsAwarded: r.points_awarded,
+      reviewed: !!r.reviewed,
+      displayName: r.display_name,
+      participantId: r.participant_id
+    };
+  }));
 });
 
 // Admin override: mark a response correct/incorrect

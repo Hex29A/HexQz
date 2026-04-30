@@ -70,14 +70,22 @@ router.get('/quiz/:adminToken/sessions', (req, res) => {
     ORDER BY s.created_at DESC
   `).all(quiz.id);
 
-  res.json(sessions.map(s => ({
-    id: s.id,
-    joinCode: s.join_code,
-    status: s.status,
-    currentQuestionIndex: s.current_question_index,
-    participantCount: s.participant_count,
-    createdAt: s.created_at
-  })));
+  res.json(sessions.map(s => {
+    let winner = null;
+    if (s.status === 'finished') {
+      const top = db.prepare('SELECT display_name, score FROM participant WHERE session_id = ? ORDER BY score DESC LIMIT 1').get(s.id);
+      if (top) winner = { name: top.display_name, score: top.score };
+    }
+    return {
+      id: s.id,
+      joinCode: s.join_code,
+      status: s.status,
+      currentQuestionIndex: s.current_question_index,
+      participantCount: s.participant_count,
+      createdAt: s.created_at,
+      winner
+    };
+  }));
 });
 
 // Start session
@@ -203,7 +211,13 @@ router.get('/session/:sessionId/current', (req, res) => {
   }
 
   if (session.status === 'finished') {
-    return res.json({ status: 'finished', scores, totalQuestions: questions.length, questionIndex: questions.length });
+    return res.json({
+      status: 'finished',
+      scores,
+      totalQuestions: questions.length,
+      questionIndex: questions.length,
+      questions: questions.map(q => ({ id: q.id, text: q.text, type: q.type, sortOrder: q.sort_order }))
+    });
   }
 
   // Active

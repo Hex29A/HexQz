@@ -109,6 +109,12 @@ export default function AdminDashboardView() {
               <div className="flex justify-between items-center">
                 <h2 className="font-semibold text-lg">{q.title}</h2>
                 <div className="flex items-center gap-3">
+                  {q.latestSessionId && q.latestSessionStatus === 'finished' && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigate(`/results/${q.latestSessionId}?token=${q.adminToken}`); }}
+                      className="text-sm text-gray-400 hover:text-white transition"
+                    >Results</button>
+                  )}
                   <span className="text-gray-500 text-sm">{q.sessionCount} session{q.sessionCount !== 1 ? 's' : ''}</span>
                   <button onClick={(e) => deleteQuiz(q.adminToken, e)} className="text-red-400 hover:text-red-300 text-sm">Delete</button>
                 </div>

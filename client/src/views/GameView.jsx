@@ -18,6 +18,7 @@ export default function GameView() {
   const [textAnswer, setTextAnswer] = useState('');
   const [multiPartAnswers, setMultiPartAnswers] = useState({});
   const [error, setError] = useState('');
+  const [liveCount, setLiveCount] = useState({ count: 0, total: 0 });
 
   const questionIndexRef = useRef(0);
   const pollTimer = useRef(null);
@@ -41,6 +42,7 @@ export default function GameView() {
       setTextAnswer('');
       setMultiPartAnswers({});
       setError('');
+      setLiveCount({ count: 0, total: 0 });
       questionIndexRef.current = data.questionIndex;
     } else if (data.question && questionIndexRef.current === 0 && !question) {
       // First question
@@ -75,6 +77,7 @@ export default function GameView() {
       setTextAnswer('');
       setMultiPartAnswers({});
       setError('');
+      setLiveCount({ count: 0, total: 0 });
       questionIndexRef.current = data.questionIndex;
     });
 
@@ -92,6 +95,10 @@ export default function GameView() {
       navigate(`/results/${sessionId}`);
     });
 
+    socket.on('session:answer_count', (data) => {
+      setLiveCount({ count: data.count, total: data.total });
+    });
+
     // Initial state
     fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(applyState);
 
@@ -105,13 +112,12 @@ export default function GameView() {
       socket.off('session:started');
       socket.off('session:state');
       socket.off('session:finished');
+      socket.off('session:answer_count');
       clearInterval(pollTimer.current);
     };
   }, [sessionId, participantId, navigate, applyState]);
 
   const submitAnswer = async () => {
-    if (submitted) return;
-
     const body = { participantId, questionId: question.id };
 
     if (question.type === 'single_choice' || question.type === 'true_false') {
@@ -139,11 +145,7 @@ export default function GameView() {
         setSubmitted(true);
       } else {
         const err = await res.json();
-        if (res.status === 409) {
-          setSubmitted(true); // already answered
-        } else {
-          setError(err.error || 'Failed to submit');
-        }
+        setError(err.error || 'Failed to submit');
       }
     } catch {
       setError('Connection error. Tap to retry.');
@@ -179,8 +181,15 @@ export default function GameView() {
 
         {submitted ? (
           <div className="text-center py-8">
-            <div className="text-4xl mb-2">✓</div>
-            <p className="text-lg text-gray-400">Answer received!</p>
+            <div className="text-4xl mb-2">&#10003;</div>
+            <p className="text-lg text-gray-400 mb-2">Answer received!</p>
+            {liveCount.total > 0 && (
+              <p className="text-sm text-gray-500 mb-4">{liveCount.count}/{liveCount.total} answered</p>
+            )}
+            <button
+              onClick={() => setSubmitted(false)}
+              className="px-6 py-2 border border-gray-600 rounded-lg text-gray-300 hover:bg-gray-800 transition text-sm"
+            >Change answer</button>
           </div>
         ) : (
           <>
