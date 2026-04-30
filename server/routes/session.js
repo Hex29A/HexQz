@@ -32,6 +32,12 @@ router.post('/quiz/:adminToken/session', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
 
+  // Check for existing active/waiting session
+  const existing = db.prepare('SELECT id, join_code FROM session WHERE quiz_id = ? AND status IN (?, ?)').get(quiz.id, 'waiting', 'active');
+  if (existing) {
+    return res.status(409).json({ error: 'Quiz already has an active session', sessionId: existing.id, joinCode: existing.join_code });
+  }
+
   // Generate unique join code
   let joinCode;
   let attempts = 0;
@@ -188,6 +194,7 @@ router.get('/session/:sessionId/current', (req, res) => {
     const participants = db.prepare('SELECT * FROM participant WHERE session_id = ?').all(session.id);
     return res.json({
       status: 'waiting',
+      joinCode: session.join_code,
       questionIndex: 0,
       totalQuestions: questions.length,
       scores,
@@ -201,12 +208,13 @@ router.get('/session/:sessionId/current', (req, res) => {
 
   // Active
   const currentQuestion = questions[session.current_question_index];
-  if (!currentQuestion) return res.json({ status: 'active', scores, questionIndex: session.current_question_index, totalQuestions: questions.length });
+  if (!currentQuestion) return res.json({ status: 'active', joinCode: session.join_code, scores, questionIndex: session.current_question_index, totalQuestions: questions.length });
 
   const answers = db.prepare('SELECT * FROM answer WHERE question_id = ?').all(currentQuestion.id);
 
   res.json({
     status: 'active',
+    joinCode: session.join_code,
     question: { id: currentQuestion.id, text: currentQuestion.text, imageUrl: currentQuestion.image_url, type: currentQuestion.type },
     answers: answers.map(a => ({ id: a.id, text: a.text })),
     questionIndex: session.current_question_index,

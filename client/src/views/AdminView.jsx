@@ -26,8 +26,10 @@ export default function AdminView() {
 
   const startSession = async () => {
     const res = await fetch(`/api/quiz/${adminToken}/session`, { method: 'POST' });
-    if (res.ok) {
-      const { sessionId } = await res.json();
+    const data = await res.json();
+    if (res.ok || res.status === 409) {
+      // 409 means session already exists — redirect to it
+      const sessionId = data.sessionId;
       navigate(`/host/${sessionId}?token=${adminToken}`);
     }
   };

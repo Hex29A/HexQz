@@ -113,15 +113,13 @@ export default function HostView() {
   };
 
   const joinUrl = typeof window !== 'undefined' ? `${window.location.origin}/join` : '';
-  const joinCode = state?.participants ? '' : ''; // We need to get join code
-
-  // Get join code from URL or state
   const [joinCodeDisplay, setJoinCodeDisplay] = useState('');
+
   useEffect(() => {
-    fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(() => {
-      // Get join code from session list or other means — for now show sessionId
+    fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
+      if (data.joinCode) setJoinCodeDisplay(data.joinCode);
     });
-  }, []);
+  }, [sessionId]);
 
   if (finished) {
     return (
@@ -140,9 +138,12 @@ export default function HostView() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-6">
         <h1 className="text-3xl font-bold mb-8">Waiting for players...</h1>
-        <div className="mb-6">
+        <div className="mb-4">
           <QRCodeSVG value={joinUrl} size={250} bgColor="transparent" fgColor="white" />
         </div>
+        {joinCodeDisplay && (
+          <p className="text-4xl font-mono font-bold tracking-widest mb-4">{joinCodeDisplay}</p>
+        )}
         <p className="text-gray-400 mb-2">Go to <span className="text-white font-mono">{joinUrl}</span></p>
         <p className="text-gray-400 mb-8">{participants.length} player{participants.length !== 1 ? 's' : ''} joined</p>
         <div className="flex flex-wrap gap-2 mb-8 justify-center">
