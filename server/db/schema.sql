@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS answer (
   id TEXT PRIMARY KEY,
   question_id TEXT NOT NULL REFERENCES question(id) ON DELETE CASCADE,
   text TEXT NOT NULL,
-  is_correct INTEGER NOT NULL DEFAULT 0
+  is_correct INTEGER NOT NULL DEFAULT 0,
+  part_label TEXT
 );
 
 CREATE TABLE IF NOT EXISTS session (
@@ -49,6 +50,8 @@ CREATE TABLE IF NOT EXISTS response (
   answer_id TEXT REFERENCES answer(id),
   text_answer TEXT,
   is_correct INTEGER NOT NULL DEFAULT 0,
+  points_awarded INTEGER NOT NULL DEFAULT 0,
+  reviewed INTEGER NOT NULL DEFAULT 0,
   answered_at INTEGER DEFAULT (unixepoch()),
   UNIQUE(participant_id, question_id)
 );

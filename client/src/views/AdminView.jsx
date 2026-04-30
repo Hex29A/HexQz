@@ -7,13 +7,15 @@ const QUESTION_TYPES = [
   { value: 'true_false', label: 'True / False' },
   { value: 'free_text', label: 'Free Text' },
   { value: 'numeric', label: 'Numeric' },
-  { value: 'estimation', label: 'Estimation' }
+  { value: 'estimation', label: 'Estimation' },
+  { value: 'multi_part', label: 'Multi-Part (e.g. Artist + Song)' }
 ];
 
 export default function AdminView() {
   const { adminToken } = useParams();
   const navigate = useNavigate();
   const [quiz, setQuiz] = useState(null);
+  const [sessions, setSessions] = useState([]);
   const [editing, setEditing] = useState(null); // question being edited
   const [showForm, setShowForm] = useState(false);
 
@@ -22,7 +24,12 @@ export default function AdminView() {
     if (res.ok) setQuiz(await res.json());
   };
 
-  useEffect(() => { loadQuiz(); }, [adminToken]);
+  const loadSessions = async () => {
+    const res = await fetch(`/api/quiz/${adminToken}/sessions`);
+    if (res.ok) setSessions(await res.json());
+  };
+
+  useEffect(() => { loadQuiz(); loadSessions(); }, [adminToken]);
 
   const startSession = async () => {
     const res = await fetch(`/api/quiz/${adminToken}/session`, { method: 'POST' });
@@ -82,6 +89,38 @@ export default function AdminView() {
         + Add Question
       </button>
 
+      {/* Sessions */}
+      {sessions.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-xl font-bold mb-3">Sessions</h2>
+          <div className="flex flex-col gap-2">
+            {sessions.map(s => (
+              <div key={s.id} className="flex items-center justify-between p-3 bg-gray-800 rounded-lg border border-gray-700">
+                <div>
+                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold mr-2 ${
+                    s.status === 'active' ? 'bg-green-900 text-green-300' :
+                    s.status === 'waiting' ? 'bg-yellow-900 text-yellow-300' :
+                    'bg-gray-700 text-gray-400'
+                  }`}>{s.status}</span>
+                  <span className="font-mono text-sm">{s.joinCode}</span>
+                  <span className="text-gray-500 text-sm ml-3">{s.participantCount} players</span>
+                </div>
+                <div className="flex gap-2">
+                  {(s.status === 'waiting' || s.status === 'active') && (
+                    <button onClick={() => navigate(`/host/${s.id}?token=${adminToken}`)} className="text-sm text-accent hover:underline">
+                      Host
+                    </button>
+                  )}
+                  <button onClick={() => navigate(`/results/${s.id}`)} className="text-sm text-gray-400 hover:text-white">
+                    Results
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {showForm && (
         <QuestionForm
           adminToken={adminToken}
@@ -99,11 +138,25 @@ function QuestionForm({ adminToken, question, onDone, onCancel }) {
   const [imageUrl, setImageUrl] = useState(question?.imageUrl || '');
   const [type, setType] = useState(question?.type || 'single_choice');
   const [answers, setAnswers] = useState(
-    question?.answers?.map(a => ({ text: a.text, isCorrect: a.isCorrect })) ||
+    question?.answers?.map(a => ({ text: a.text, isCorrect: a.isCorrect, partLabel: a.partLabel })) ||
     [{ text: '', isCorrect: true }, { text: '', isCorrect: false }, { text: '', isCorrect: false }, { text: '', isCorrect: false }]
   );
   const [correctValue, setCorrectValue] = useState(question?.correctValue ?? '');
   const [tolerance, setTolerance] = useState(question?.tolerance ?? 0);
+  const [parts, setParts] = useState(() => {
+    // Reconstruct parts from answers with partLabel
+    if (question?.type === 'multi_part' && question?.answers) {
+      const p = {};
+      for (const a of question.answers) {
+        if (a.partLabel) {
+          if (!p[a.partLabel]) p[a.partLabel] = [];
+          p[a.partLabel].push(a.text);
+        }
+      }
+      return Object.entries(p).map(([label, accepted]) => ({ label, accepted }));
+    }
+    return [{ label: 'Artist', accepted: [''] }, { label: 'Song', accepted: [''] }];
+  });
 
   useEffect(() => {
     if (type === 'true_false') {
@@ -113,13 +166,21 @@ function QuestionForm({ adminToken, question, onDone, onCancel }) {
 
   const submit = async (e) => {
     e.preventDefault();
+    let submitAnswers;
+    if (type === 'multi_part') {
+      // Convert parts to flat answers array with partLabel
+      submitAnswers = parts.flatMap(p =>
+        p.accepted.filter(a => a.trim()).map(a => ({ text: a.trim(), isCorrect: true, partLabel: p.label }))
+      );
+    } else {
+      submitAnswers = answers.filter(a => a.text.trim());
+    }
+
     const body = {
       text,
       imageUrl: imageUrl || undefined,
       type,
-      answers: (type === 'free_text' || type === 'numeric' || type === 'estimation')
-        ? answers.filter(a => a.text.trim())
-        : answers.filter(a => a.text.trim()),
+      answers: submitAnswers,
       correctValue: (type === 'numeric' || type === 'estimation') ? parseFloat(correctValue) : undefined,
       tolerance: type === 'numeric' ? parseFloat(tolerance) : undefined
     };
@@ -136,6 +197,7 @@ function QuestionForm({ adminToken, question, onDone, onCancel }) {
   const showOptions = ['single_choice', 'multiple_choice', 'true_false'].includes(type);
   const showFreeText = type === 'free_text';
   const showNumeric = type === 'numeric' || type === 'estimation';
+  const showMultiPart = type === 'multi_part';
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" onClick={onCancel}>
@@ -244,6 +306,49 @@ function QuestionForm({ adminToken, question, onDone, onCancel }) {
                     className="w-full mt-1 px-3 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent" />
                 </div>
               )}
+            </div>
+          )}
+
+          {showMultiPart && (
+            <div className="flex flex-col gap-3">
+              <label className="text-sm text-gray-400">Answer parts (each part is scored independently)</label>
+              {parts.map((part, pi) => (
+                <div key={pi} className="p-3 bg-gray-700/50 rounded-lg">
+                  <div className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={part.label}
+                      onChange={e => setParts(parts.map((p, j) => j === pi ? { ...p, label: e.target.value } : p))}
+                      placeholder="Part label (e.g. Artist)"
+                      className="flex-1 px-3 py-1 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent font-semibold"
+                    />
+                    {parts.length > 1 && (
+                      <button type="button" onClick={() => setParts(parts.filter((_, j) => j !== pi))} className="text-red-400">×</button>
+                    )}
+                  </div>
+                  {part.accepted.map((acc, ai) => (
+                    <div key={ai} className="flex gap-2 ml-4 mt-1">
+                      <input
+                        type="text"
+                        value={acc}
+                        onChange={e => setParts(parts.map((p, j) => j === pi ? { ...p, accepted: p.accepted.map((a, k) => k === ai ? e.target.value : a) } : p))}
+                        placeholder="Accepted answer"
+                        maxLength={500}
+                        className="flex-1 px-3 py-1 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent text-sm"
+                      />
+                      {part.accepted.length > 1 && (
+                        <button type="button" onClick={() => setParts(parts.map((p, j) => j === pi ? { ...p, accepted: p.accepted.filter((_, k) => k !== ai) } : p))} className="text-red-400 text-sm">×</button>
+                      )}
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setParts(parts.map((p, j) => j === pi ? { ...p, accepted: [...p.accepted, ''] } : p))} className="text-xs text-accent hover:underline ml-4 mt-1">
+                    + Add alternative spelling
+                  </button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setParts([...parts, { label: '', accepted: [''] }])} className="text-sm text-accent hover:underline">
+                + Add part
+              </button>
             </div>
           )}
         </div>

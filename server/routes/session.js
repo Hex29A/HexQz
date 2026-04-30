@@ -103,7 +103,7 @@ router.post('/session/:sessionId/start', (req, res) => {
 
   const payload = {
     question: { id: firstQuestion.id, text: firstQuestion.text, imageUrl: firstQuestion.image_url, type: firstQuestion.type },
-    answers: answers.map(a => ({ id: a.id, text: a.text })),
+    answers: answers.map(a => ({ id: a.id, text: a.text, partLabel: a.part_label || undefined })),
     questionIndex: 0,
     totalQuestions: questions.length
   };
@@ -169,7 +169,7 @@ router.post('/session/:sessionId/next', (req, res) => {
 
   const payload = {
     question: { id: nextQuestion.id, text: nextQuestion.text, imageUrl: nextQuestion.image_url, type: nextQuestion.type },
-    answers: answers.map(a => ({ id: a.id, text: a.text })),
+    answers: answers.map(a => ({ id: a.id, text: a.text, partLabel: a.part_label || undefined })),
     questionIndex: nextIndex,
     totalQuestions: questions.length
   };
@@ -216,7 +216,7 @@ router.get('/session/:sessionId/current', (req, res) => {
     status: 'active',
     joinCode: session.join_code,
     question: { id: currentQuestion.id, text: currentQuestion.text, imageUrl: currentQuestion.image_url, type: currentQuestion.type },
-    answers: answers.map(a => ({ id: a.id, text: a.text })),
+    answers: answers.map(a => ({ id: a.id, text: a.text, partLabel: a.part_label || undefined })),
     questionIndex: session.current_question_index,
     totalQuestions: questions.length,
     scores

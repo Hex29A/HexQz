@@ -16,6 +16,7 @@ export default function GameView() {
   const [submitted, setSubmitted] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [textAnswer, setTextAnswer] = useState('');
+  const [multiPartAnswers, setMultiPartAnswers] = useState({});
   const [error, setError] = useState('');
 
   const questionIndexRef = useRef(0);
@@ -38,6 +39,7 @@ export default function GameView() {
       setSubmitted(false);
       setSelectedAnswer(null);
       setTextAnswer('');
+      setMultiPartAnswers({});
       setError('');
       questionIndexRef.current = data.questionIndex;
     } else if (data.question && questionIndexRef.current === 0 && !question) {
@@ -71,6 +73,7 @@ export default function GameView() {
       setSubmitted(false);
       setSelectedAnswer(null);
       setTextAnswer('');
+      setMultiPartAnswers({});
       setError('');
       questionIndexRef.current = data.questionIndex;
     });
@@ -117,6 +120,10 @@ export default function GameView() {
     } else if (question.type === 'multiple_choice') {
       if (!selectedAnswer || selectedAnswer.length === 0) return;
       body.answerId = selectedAnswer; // array
+    } else if (question.type === 'multi_part') {
+      const hasAnyAnswer = Object.values(multiPartAnswers).some(v => v.trim());
+      if (!hasAnyAnswer) return;
+      body.textAnswer = JSON.stringify(multiPartAnswers);
     } else {
       if (!textAnswer.trim()) return;
       body.textAnswer = textAnswer.trim();
@@ -155,6 +162,10 @@ export default function GameView() {
 
   const isChoiceType = ['single_choice', 'true_false', 'multiple_choice'].includes(question.type);
   const isTextType = ['free_text', 'numeric', 'estimation'].includes(question.type);
+  const isMultiPart = question.type === 'multi_part';
+
+  // Extract part labels from answers (answers carry part_label info via the question's answers)
+  const partLabels = isMultiPart ? [...new Set(answers.map(a => a.partLabel).filter(Boolean))] : [];
 
   return (
     <div className="flex flex-col min-h-screen p-4">
@@ -219,13 +230,35 @@ export default function GameView() {
               </div>
             )}
 
+            {isMultiPart && (
+              <div className="mt-4 flex flex-col gap-3">
+                {partLabels.map(label => (
+                  <div key={label}>
+                    <label className="text-sm text-gray-400 mb-1 block">{label}</label>
+                    <input
+                      type="text"
+                      placeholder={`Enter ${label.toLowerCase()}...`}
+                      value={multiPartAnswers[label] || ''}
+                      onChange={e => setMultiPartAnswers(prev => ({ ...prev, [label]: e.target.value }))}
+                      maxLength={100}
+                      className="w-full px-4 py-3 text-lg bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-accent"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
             {error && (
               <p className="text-red-400 text-sm text-center mt-2 cursor-pointer" onClick={() => setError('')}>{error}</p>
             )}
 
             <button
               onClick={submitAnswer}
-              disabled={isChoiceType ? !selectedAnswer : !textAnswer.trim()}
+              disabled={
+                isChoiceType ? !selectedAnswer :
+                isMultiPart ? !Object.values(multiPartAnswers).some(v => v.trim()) :
+                !textAnswer.trim()
+              }
               className="w-full mt-4 py-4 bg-accent hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-semibold text-lg transition"
             >
               Submit

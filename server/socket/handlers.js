@@ -82,7 +82,7 @@ export default function registerSocketHandlers(io) {
       socket.emit('session:state', {
         status: 'active',
         question: { id: currentQuestion.id, text: currentQuestion.text, imageUrl: currentQuestion.image_url, type: currentQuestion.type },
-        answers: answers.map(a => ({ id: a.id, text: a.text })),
+        answers: answers.map(a => ({ id: a.id, text: a.text, partLabel: a.part_label || undefined })),
         questionIndex: session.current_question_index,
         totalQuestions: questions.length,
         scores

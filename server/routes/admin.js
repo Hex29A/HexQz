@@ -96,7 +96,8 @@ router.get('/quiz/:adminToken', (req, res) => {
       answers: answers.map(a => ({
         id: a.id,
         text: a.text,
-        isCorrect: !!a.is_correct
+        isCorrect: !!a.is_correct,
+        partLabel: a.part_label
       }))
     };
   });
@@ -145,7 +146,7 @@ router.post('/quiz/:adminToken/question', (req, res) => {
   if (!text || !text.trim()) return res.status(400).json({ error: 'Question text is required' });
   if (text.trim().length > 1000) return res.status(400).json({ error: 'Question too long (max 1000)' });
 
-  const validTypes = ['single_choice', 'multiple_choice', 'true_false', 'free_text', 'numeric', 'estimation'];
+  const validTypes = ['single_choice', 'multiple_choice', 'true_false', 'free_text', 'numeric', 'estimation', 'multi_part'];
   if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid question type' });
 
   // Get next sort order
@@ -160,11 +161,11 @@ router.post('/quiz/:adminToken/question', (req, res) => {
 
   // Insert answers
   if (answers && Array.isArray(answers)) {
-    const insertAnswer = db.prepare('INSERT INTO answer (id, question_id, text, is_correct) VALUES (?, ?, ?, ?)');
+    const insertAnswer = db.prepare('INSERT INTO answer (id, question_id, text, is_correct, part_label) VALUES (?, ?, ?, ?, ?)');
     for (const a of answers) {
       if (!a.text || !a.text.trim()) continue;
       if (a.text.trim().length > 500) continue;
-      insertAnswer.run(randomUUID(), questionId, a.text.trim(), a.isCorrect ? 1 : 0);
+      insertAnswer.run(randomUUID(), questionId, a.text.trim(), a.isCorrect ? 1 : 0, a.partLabel || null);
     }
   }
 
@@ -190,11 +191,11 @@ router.put('/quiz/:adminToken/question/:questionId', (req, res) => {
   // Replace answers if provided
   if (answers && Array.isArray(answers)) {
     db.prepare('DELETE FROM answer WHERE question_id = ?').run(question.id);
-    const insertAnswer = db.prepare('INSERT INTO answer (id, question_id, text, is_correct) VALUES (?, ?, ?, ?)');
+    const insertAnswer = db.prepare('INSERT INTO answer (id, question_id, text, is_correct, part_label) VALUES (?, ?, ?, ?, ?)');
     for (const a of answers) {
       if (!a.text || !a.text.trim()) continue;
       if (a.text.trim().length > 500) continue;
-      insertAnswer.run(randomUUID(), question.id, a.text.trim(), a.isCorrect ? 1 : 0);
+      insertAnswer.run(randomUUID(), question.id, a.text.trim(), a.isCorrect ? 1 : 0, a.partLabel || null);
     }
   }
 

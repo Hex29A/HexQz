@@ -158,13 +158,42 @@ router.post('/answer', (req, res) => {
     }
   }
   // estimation: scored later when admin advances
+  // multi_part: scored per part
+  if (question.type === 'multi_part') {
+    if (textAnswer) {
+      // textAnswer is JSON: {"Artist": "ABBA", "Song": "Dancing Queen"}
+      let parts;
+      try { parts = typeof textAnswer === 'string' ? JSON.parse(textAnswer) : textAnswer; } catch { parts = {}; }
+      const answers = db.prepare('SELECT * FROM answer WHERE question_id = ? AND is_correct = 1').all(questionId);
+
+      // Group accepted answers by part_label
+      const partGroups = {};
+      for (const a of answers) {
+        if (!a.part_label) continue;
+        if (!partGroups[a.part_label]) partGroups[a.part_label] = [];
+        partGroups[a.part_label].push(a.text.toLowerCase().trim());
+      }
+
+      const totalParts = Object.keys(partGroups).length;
+      let matchedParts = 0;
+      for (const [label, accepted] of Object.entries(partGroups)) {
+        const userAnswer = (parts[label] || '').toLowerCase().trim();
+        if (userAnswer && accepted.includes(userAnswer)) matchedParts++;
+      }
+
+      if (totalParts > 0) {
+        points = Math.round((matchedParts / totalParts) * 10);
+        isCorrect = matchedParts === totalParts ? 1 : 0;
+      }
+    }
+  }
 
   // Save response
   const responseId = randomUUID();
   db.prepare(`
-    INSERT INTO response (id, participant_id, question_id, answer_id, text_answer, is_correct)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(responseId, participantId, questionId, answerId || null, textAnswer || null, isCorrect);
+    INSERT INTO response (id, participant_id, question_id, answer_id, text_answer, is_correct, points_awarded)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(responseId, participantId, questionId, answerId || null, typeof textAnswer === 'object' ? JSON.stringify(textAnswer) : (textAnswer || null), isCorrect, points);
 
   // Update score (not for estimation — scored later)
   if (points > 0 && question.type !== 'estimation') {
@@ -187,6 +216,85 @@ router.post('/answer', (req, res) => {
   });
 
   res.json({ received: true });
+});
+
+// Get responses for a question (admin review)
+router.get('/session/:sessionId/question/:questionId/responses', (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  if (!adminToken) return res.status(401).json({ error: 'Missing X-Admin-Token header' });
+
+  const session = db.prepare(`
+    SELECT s.*, q.admin_token FROM session s
+    JOIN quiz q ON q.id = s.quiz_id
+    WHERE s.id = ?
+  `).get(req.params.sessionId);
+  if (!session || session.admin_token !== adminToken) return res.status(403).json({ error: 'Forbidden' });
+
+  const responses = db.prepare(`
+    SELECT r.id, r.text_answer, r.is_correct, r.points_awarded, r.reviewed,
+           p.display_name, p.id as participant_id
+    FROM response r
+    JOIN participant p ON p.id = r.participant_id
+    WHERE r.question_id = ? AND p.session_id = ?
+    ORDER BY r.answered_at
+  `).all(req.params.questionId, req.params.sessionId);
+
+  res.json(responses.map(r => ({
+    id: r.id,
+    textAnswer: r.text_answer,
+    isCorrect: !!r.is_correct,
+    pointsAwarded: r.points_awarded,
+    reviewed: !!r.reviewed,
+    displayName: r.display_name,
+    participantId: r.participant_id
+  })));
+});
+
+// Admin override: mark a response correct/incorrect
+router.post('/session/:sessionId/override', (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  if (!adminToken) return res.status(401).json({ error: 'Missing X-Admin-Token header' });
+
+  const session = db.prepare(`
+    SELECT s.*, q.admin_token FROM session s
+    JOIN quiz q ON q.id = s.quiz_id
+    WHERE s.id = ?
+  `).get(req.params.sessionId);
+  if (!session || session.admin_token !== adminToken) return res.status(403).json({ error: 'Forbidden' });
+
+  const { responseId, isCorrect } = req.body;
+  if (!responseId) return res.status(400).json({ error: 'responseId required' });
+
+  const response = db.prepare(`
+    SELECT r.*, p.session_id FROM response r
+    JOIN participant p ON p.id = r.participant_id
+    WHERE r.id = ?
+  `).get(responseId);
+  if (!response || response.session_id !== session.id) return res.status(404).json({ error: 'Response not found' });
+
+  const oldPoints = response.points_awarded || 0;
+  const newPoints = isCorrect ? 10 : 0;
+  const pointsDiff = newPoints - oldPoints;
+
+  // Update response
+  db.prepare('UPDATE response SET is_correct = ?, points_awarded = ?, reviewed = 1 WHERE id = ?')
+    .run(isCorrect ? 1 : 0, newPoints, responseId);
+
+  // Adjust participant score
+  if (pointsDiff !== 0) {
+    db.prepare('UPDATE participant SET score = score + ? WHERE id = ?')
+      .run(pointsDiff, response.participant_id);
+  }
+
+  // Broadcast updated scores
+  const io = req.app.get('io');
+  const scores = db.prepare(`
+    SELECT display_name, team_name, score FROM participant
+    WHERE session_id = ? ORDER BY score DESC
+  `).all(session.id).map(p => ({ name: p.display_name, team: p.team_name, score: p.score }));
+  io.to(`session:${session.id}`).emit('session:scores', { scores });
+
+  res.json({ ok: true, pointsDiff });
 });
 
 export default router;
