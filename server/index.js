@@ -12,6 +12,9 @@ import sessionRoutes from './routes/session.js';
 import joinRoutes from './routes/join.js';
 import registerSocketHandlers from './socket/handlers.js';
 
+// Seed demo quiz on first run
+import './seed.js';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const server = createServer(app);
