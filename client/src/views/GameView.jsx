@@ -7,7 +7,7 @@ const POLL_INTERVAL = 8000;
 export default function GameView() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
-  const participantId = sessionStorage.getItem('participantId');
+  const participantId = localStorage.getItem(`participant:${sessionId}`);
 
   const [question, setQuestion] = useState(null);
   const [answers, setAnswers] = useState([]);

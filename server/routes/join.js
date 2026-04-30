@@ -61,6 +61,12 @@ router.post('/join/:joinCode/register', (req, res) => {
   if (displayName.trim().length > 30) return res.status(400).json({ error: 'Name too long (max 30)' });
   if (teamName && teamName.trim().length > 30) return res.status(400).json({ error: 'Team name too long (max 30)' });
 
+  // Check if name is already taken in this session
+  const existing = db.prepare('SELECT id FROM participant WHERE session_id = ? AND display_name = ?').get(session.id, displayName.trim());
+  if (existing) {
+    return res.status(409).json({ error: 'Name already taken', participantId: existing.id, sessionId: session.id });
+  }
+
   const participantId = randomUUID();
   db.prepare(`
     INSERT INTO participant (id, session_id, display_name, team_name)

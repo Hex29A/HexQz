@@ -27,6 +27,12 @@ export default function JoinView() {
       if (data.themeColor) {
         document.documentElement.style.setProperty('--accent', data.themeColor);
       }
+      // Check if we already have a participantId for this session (auto-resume)
+      const savedPid = localStorage.getItem(`participant:${data.sessionId}`);
+      if (savedPid) {
+        navigate(data.status === 'waiting' ? `/lobby/${data.sessionId}` : `/game/${data.sessionId}`);
+        return;
+      }
       setStep('name');
     } else {
       const err = await res.json();
@@ -52,9 +58,13 @@ export default function JoinView() {
 
     if (res.ok) {
       const { participantId, sessionId } = await res.json();
-      sessionStorage.setItem('participantId', participantId);
-      sessionStorage.setItem('sessionId', sessionId);
+      localStorage.setItem(`participant:${sessionId}`, participantId);
       navigate(`/lobby/${sessionId}`);
+    } else if (res.status === 409) {
+      // Name already taken — resume as that participant
+      const { participantId, sessionId } = await res.json();
+      localStorage.setItem(`participant:${sessionId}`, participantId);
+      navigate(sessionInfo?.status === 'waiting' ? `/lobby/${sessionId}` : `/game/${sessionId}`);
     } else {
       const err = await res.json();
       setError(err.error || 'Registration failed');

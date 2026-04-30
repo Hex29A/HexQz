@@ -5,7 +5,7 @@ import socket from '../socket.js';
 export default function LobbyView() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
-  const participantId = sessionStorage.getItem('participantId');
+  const participantId = localStorage.getItem(`participant:${sessionId}`);
   const [participantCount, setParticipantCount] = useState(0);
 
   useEffect(() => {

@@ -56,6 +56,30 @@ router.post('/quiz/:adminToken/session', (req, res) => {
   res.status(201).json({ sessionId, joinCode });
 });
 
+// End/abandon a session
+router.post('/session/:sessionId/end', (req, res) => {
+  const adminToken = req.headers['x-admin-token'];
+  if (!adminToken) return res.status(401).json({ error: 'Missing X-Admin-Token header' });
+
+  const session = db.prepare(`
+    SELECT s.*, q.admin_token FROM session s
+    JOIN quiz q ON q.id = s.quiz_id
+    WHERE s.id = ?
+  `).get(req.params.sessionId);
+  if (!session || session.admin_token !== adminToken) return res.status(403).json({ error: 'Forbidden' });
+
+  db.prepare('UPDATE session SET status = ? WHERE id = ?').run('finished', session.id);
+
+  const io = req.app.get('io');
+  const scores = db.prepare(`
+    SELECT display_name, team_name, score FROM participant
+    WHERE session_id = ? ORDER BY score DESC
+  `).all(session.id).map(p => ({ name: p.display_name, team: p.team_name, score: p.score }));
+  io.to(`session:${session.id}`).emit('session:finished', { results: scores, resultsUrl: `/results/${session.id}` });
+
+  res.json({ ok: true });
+});
+
 // List sessions for a quiz
 router.get('/quiz/:adminToken/sessions', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);

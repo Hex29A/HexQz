@@ -34,10 +34,28 @@ export default function AdminView() {
   const startSession = async () => {
     const res = await fetch(`/api/quiz/${adminToken}/session`, { method: 'POST' });
     const data = await res.json();
-    if (res.ok || res.status === 409) {
-      // 409 means session already exists — redirect to it
-      const sessionId = data.sessionId;
-      navigate(`/host/${sessionId}?token=${adminToken}`);
+    if (res.ok) {
+      navigate(`/host/${data.sessionId}?token=${adminToken}`);
+    } else if (res.status === 409) {
+      // Session already exists — ask what to do
+      const action = confirm(
+        'There is already an active session for this quiz.\n\nOK = Go to existing session\nCancel = End it and create a new one'
+      );
+      if (action) {
+        navigate(`/host/${data.sessionId}?token=${adminToken}`);
+      } else {
+        // End the existing session
+        await fetch(`/api/session/${data.sessionId}/end`, {
+          method: 'POST',
+          headers: { 'X-Admin-Token': adminToken }
+        });
+        // Create new session
+        const res2 = await fetch(`/api/quiz/${adminToken}/session`, { method: 'POST' });
+        const data2 = await res2.json();
+        if (res2.ok) {
+          navigate(`/host/${data2.sessionId}?token=${adminToken}`);
+        }
+      }
     }
   };
 

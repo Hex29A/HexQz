@@ -8,7 +8,7 @@ export default function ResultsView() {
   const navigate = useNavigate();
   const adminToken = searchParams.get('token');
   const [results, setResults] = useState(null);
-  const participantId = sessionStorage.getItem('participantId');
+  const participantId = localStorage.getItem(`participant:${sessionId}`);
 
   useEffect(() => {
     fetch(`/api/session/${sessionId}/results`).then(r => r.json()).then(data => {
