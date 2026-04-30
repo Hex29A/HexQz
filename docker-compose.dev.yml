@@ -1,0 +1,34 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: server
+    ports:
+      - "3042:3042"
+    volumes:
+      - ./server:/app/server
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    env_file: .env
+    environment:
+      - NODE_ENV=development
+      - PORT=3042
+      - DB_PATH=/app/data/hexqz.sqlite
+    command: node --watch /app/server/index.js
+    restart: unless-stopped
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: client
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./client/src:/app/client/src
+      - ./client/index.html:/app/client/index.html
+    environment:
+      - NODE_ENV=development
+    command: npx vite --host 0.0.0.0
+    restart: unless-stopped
