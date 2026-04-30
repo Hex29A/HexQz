@@ -31,21 +31,9 @@ Open `http://localhost:3042` — that's it.
 
 [Dockge](https://github.com/louislam/dockge) is a self-hosted Docker Compose manager with a web UI.
 
-### Option A: Clone into stacks directory (recommended)
+### Option A: Pre-built image (recommended)
 
-```bash
-cd /opt/stacks  # or wherever your Dockge stacks directory is
-git clone https://github.com/Hex29A/HexQz.git hexqz
-cd hexqz
-cp .env.example .env
-# Edit .env — set ADMIN_SECRET and BASE_URL
-```
-
-The stack will appear automatically in Dockge's UI. Click **Up** to start it.
-
-To update later: open a terminal and run `git pull` in the stack directory, then click **Down → Up** in Dockge (or use the rebuild button if available).
-
-### Option B: Manual compose in Dockge UI
+Uses the auto-built image from GitHub Container Registry. Supports Dockge's **Update** button.
 
 1. In Dockge, click **"+ Compose"**
 2. Name it `hexqz`
@@ -54,9 +42,7 @@ To update later: open a terminal and run `git pull` in the stack directory, then
 ```yaml
 services:
   quiz:
-    image: node:20-alpine
-    build:
-      context: https://github.com/Hex29A/HexQz.git
+    image: ghcr.io/hex29a/hexqz:latest
     ports:
       - "3042:3042"
     volumes:
@@ -75,7 +61,23 @@ services:
 4. Edit the environment variables (at minimum `ADMIN_SECRET` and `BASE_URL`)
 5. Click **Deploy**
 
-> **Note:** Option B requires Docker to clone the repo at build time. To update, you need to rebuild the image (Down → rebuild → Up). Option A is simpler to maintain.
+To update: click the **Update** button in Dockge — it pulls the latest image automatically.
+
+### Option B: Build from source
+
+Clone the repo into your Dockge stacks directory:
+
+```bash
+cd /opt/stacks  # or wherever your Dockge stacks directory is
+git clone https://github.com/Hex29A/HexQz.git hexqz
+cd hexqz
+cp .env.example .env
+# Edit .env — set ADMIN_SECRET and BASE_URL
+```
+
+The stack will appear automatically in Dockge's UI. Click **Up** to start it.
+
+To update: `git pull && docker compose up -d --build` in the stack directory.
 
 ## How It Works
 
