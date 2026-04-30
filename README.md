@@ -61,7 +61,9 @@ services:
 4. Edit the environment variables (at minimum `ADMIN_SECRET` and `BASE_URL`)
 5. Click **Deploy**
 
-To update: click the **Update** button in Dockge — it pulls the latest image automatically.
+To update: click the **Update** button in Dockge — it pulls the latest image automatically. This works because the image is published to GHCR via GitHub Actions on every push to `main`. Dockge's Update button runs `docker compose pull` under the hood, which checks the registry for a newer version of the `latest` tag.
+
+> **Note:** The GHCR package may default to private. If Dockge can't pull the image, go to GitHub → Your profile → Packages → hexqz → Package settings → Change visibility to **Public**.
 
 ### Option B: Build from source
 
