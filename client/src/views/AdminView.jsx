@@ -1,6 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
+const THEMES = [
+  { id: 'indigo', label: 'Indigo', color: '#6366f1' },
+  { id: 'emerald', label: 'Emerald', color: '#10b981' },
+  { id: 'rose', label: 'Rose', color: '#f43f5e' },
+  { id: 'amber', label: 'Amber', color: '#f59e0b' },
+  { id: 'cyan', label: 'Cyan', color: '#06b6d4' },
+  { id: 'violet', label: 'Violet', color: '#8b5cf6' },
+  { id: 'synthwave', label: 'Synthwave', color: '#f472b6' },
+  { id: 'startrek', label: 'Star Trek', color: '#c9a227' },
+  { id: 'sunset', label: 'Sunset', color: '#ea580c' },
+  { id: 'slate', label: 'Slate', color: '#64748b' },
+];
+
 const QUESTION_TYPES = [
   { value: 'single_choice', label: 'Single Choice' },
   { value: 'multiple_choice', label: 'Multiple Choice' },
@@ -64,6 +77,21 @@ export default function AdminView() {
     loadQuiz();
   };
 
+  const updateTheme = async (color) => {
+    await fetch(`/api/quiz/${adminToken}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: quiz.title, themeColor: color, logoUrl: quiz.logoUrl })
+    });
+    setQuiz({ ...quiz, themeColor: color });
+  };
+
+  const deleteSession = async (sessionId) => {
+    if (!confirm('Delete this session and all its data?')) return;
+    await fetch(`/api/quiz/${adminToken}/session/${sessionId}`, { method: 'DELETE' });
+    loadSessions();
+  };
+
   if (!quiz) return <div className="flex items-center justify-center min-h-screen"><div className="animate-pulse text-xl">Loading...</div></div>;
 
   return (
@@ -78,6 +106,31 @@ export default function AdminView() {
         <button onClick={startSession} className="px-6 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition">
           Start Session
         </button>
+      </div>
+
+      {/* Theme Picker */}
+      <div className="mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
+        <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wide">Theme</h3>
+        <div className="flex flex-wrap gap-2">
+          {THEMES.map(t => (
+            <button
+              key={t.id}
+              onClick={() => updateTheme(t.color)}
+              className={`w-8 h-8 rounded-full border-2 transition ${quiz.themeColor === t.color ? 'border-white scale-110' : 'border-transparent hover:border-gray-500'}`}
+              style={{ backgroundColor: t.color }}
+              title={t.label}
+            />
+          ))}
+          <label className="flex items-center gap-2 ml-2">
+            <input
+              type="color"
+              value={quiz.themeColor || '#6366f1'}
+              onChange={(e) => updateTheme(e.target.value)}
+              className="w-8 h-8 rounded-full cursor-pointer border-0 bg-transparent"
+            />
+            <span className="text-xs text-gray-500">Custom</span>
+          </label>
+        </div>
       </div>
 
       <div className="flex flex-col gap-4 mb-6">
@@ -142,6 +195,9 @@ export default function AdminView() {
                     )}
                     <button onClick={() => navigate(`/results/${s.id}?token=${adminToken}`)} className="text-sm text-gray-400 hover:text-white">
                       Results
+                    </button>
+                    <button onClick={() => deleteSession(s.id)} className="text-sm text-red-400 hover:text-red-300">
+                      Delete
                     </button>
                   </div>
                 </div>

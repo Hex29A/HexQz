@@ -63,12 +63,12 @@ router.get('/admin/quizzes', (req, res) => {
   }
 
   const quizzes = db.prepare(`
-    SELECT q.id, q.title, q.admin_token, q.theme_color, q.logo_url, q.created_at,
+    SELECT q.id, q.title, q.admin_token, q.theme_color, q.logo_url, q.created_at, q.archived,
            COUNT(DISTINCT s.id) as session_count
     FROM quiz q
     LEFT JOIN session s ON s.quiz_id = q.id
     GROUP BY q.id
-    ORDER BY q.created_at DESC
+    ORDER BY q.archived ASC, q.created_at DESC
   `).all();
 
   res.json(quizzes.map(q => {
@@ -83,6 +83,7 @@ router.get('/admin/quizzes', (req, res) => {
       logoUrl: q.logo_url,
       createdAt: q.created_at,
       sessionCount: q.session_count,
+      archived: !!q.archived,
       latestSessionId: latestSession?.id || null,
       latestSessionStatus: latestSession?.status || null
     };
@@ -182,6 +183,33 @@ router.delete('/quiz/:adminToken', (req, res) => {
   db.prepare('DELETE FROM session WHERE quiz_id = ?').run(quiz.id);
   // questions and answers cascade from schema
   db.prepare('DELETE FROM quiz WHERE id = ?').run(quiz.id);
+  res.json({ ok: true });
+});
+
+// Archive/unarchive quiz
+router.post('/quiz/:adminToken/archive', (req, res) => {
+  const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);
+  if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+
+  const archived = quiz.archived ? 0 : 1;
+  db.prepare('UPDATE quiz SET archived = ? WHERE id = ?').run(archived, quiz.id);
+  res.json({ ok: true, archived });
+});
+
+// Delete single session
+router.delete('/quiz/:adminToken/session/:sessionId', (req, res) => {
+  const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);
+  if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
+
+  const session = db.prepare('SELECT * FROM session WHERE id = ? AND quiz_id = ?').get(req.params.sessionId, quiz.id);
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+
+  const participants = db.prepare('SELECT id FROM participant WHERE session_id = ?').all(session.id);
+  for (const p of participants) {
+    db.prepare('DELETE FROM response WHERE participant_id = ?').run(p.id);
+  }
+  db.prepare('DELETE FROM participant WHERE session_id = ?').run(session.id);
+  db.prepare('DELETE FROM session WHERE id = ?').run(session.id);
   res.json({ ok: true });
 });
 

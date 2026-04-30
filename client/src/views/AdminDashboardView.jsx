@@ -54,6 +54,12 @@ export default function AdminDashboardView() {
     if (res.ok) loadQuizzes();
   };
 
+  const archiveQuiz = async (adminToken, e) => {
+    e.stopPropagation();
+    await fetch(`/api/quiz/${adminToken}/archive`, { method: 'POST' });
+    loadQuizzes();
+  };
+
   useEffect(() => { loadQuizzes(); }, []);
 
   if (!loggedIn) {
@@ -99,30 +105,57 @@ export default function AdminDashboardView() {
       {quizzes.length === 0 ? (
         <p className="text-gray-500">No quizzes yet. Create one above.</p>
       ) : (
-        <div className="flex flex-col gap-3">
-          {quizzes.map(q => (
-            <div
-              key={q.id}
-              onClick={() => navigate(`/admin/${q.adminToken}`)}
-              className="p-4 bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-750 transition border border-gray-700 hover:border-accent"
-            >
-              <div className="flex justify-between items-center">
-                <h2 className="font-semibold text-lg">{q.title}</h2>
-                <div className="flex items-center gap-3">
-                  {q.latestSessionId && q.latestSessionStatus === 'finished' && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); navigate(`/results/${q.latestSessionId}?token=${q.adminToken}`); }}
-                      className="text-sm text-gray-400 hover:text-white transition"
-                    >Results</button>
-                  )}
-                  <span className="text-gray-500 text-sm">{q.sessionCount} session{q.sessionCount !== 1 ? 's' : ''}</span>
-                  <button onClick={(e) => deleteQuiz(q.adminToken, e)} className="text-red-400 hover:text-red-300 text-sm">Delete</button>
+        <>
+          <div className="flex flex-col gap-3">
+            {quizzes.filter(q => !q.archived).map(q => (
+              <div
+                key={q.id}
+                onClick={() => navigate(`/admin/${q.adminToken}`)}
+                className="p-4 bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-750 transition border border-gray-700 hover:border-accent"
+              >
+                <div className="flex justify-between items-center">
+                  <h2 className="font-semibold text-lg">{q.title}</h2>
+                  <div className="flex items-center gap-3">
+                    {q.latestSessionId && q.latestSessionStatus === 'finished' && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); navigate(`/results/${q.latestSessionId}?token=${q.adminToken}`); }}
+                        className="text-sm text-gray-400 hover:text-white transition"
+                      >Results</button>
+                    )}
+                    <span className="text-gray-500 text-sm">{q.sessionCount} session{q.sessionCount !== 1 ? 's' : ''}</span>
+                    <button onClick={(e) => archiveQuiz(q.adminToken, e)} className="text-gray-500 hover:text-gray-300 text-sm">Archive</button>
+                    <button onClick={(e) => deleteQuiz(q.adminToken, e)} className="text-red-400 hover:text-red-300 text-sm">Delete</button>
+                  </div>
                 </div>
+                <p className="text-gray-500 text-sm mt-1">{new Date(q.createdAt * 1000).toLocaleDateString()}</p>
               </div>
-              <p className="text-gray-500 text-sm mt-1">{new Date(q.createdAt * 1000).toLocaleDateString()}</p>
+            ))}
+          </div>
+
+          {quizzes.some(q => q.archived) && (
+            <div className="mt-8">
+              <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">Archived</h2>
+              <div className="flex flex-col gap-2">
+                {quizzes.filter(q => q.archived).map(q => (
+                  <div
+                    key={q.id}
+                    onClick={() => navigate(`/admin/${q.adminToken}`)}
+                    className="p-3 bg-gray-800/50 rounded-lg cursor-pointer hover:bg-gray-800 transition border border-gray-800"
+                  >
+                    <div className="flex justify-between items-center">
+                      <h2 className="text-gray-500 text-sm">{q.title}</h2>
+                      <div className="flex items-center gap-3">
+                        <span className="text-gray-600 text-xs">{q.sessionCount} session{q.sessionCount !== 1 ? 's' : ''}</span>
+                        <button onClick={(e) => archiveQuiz(q.adminToken, e)} className="text-gray-500 hover:text-gray-300 text-xs">Restore</button>
+                        <button onClick={(e) => deleteQuiz(q.adminToken, e)} className="text-red-400/60 hover:text-red-300 text-xs">Delete</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   );
