@@ -5,7 +5,7 @@ import { applyTheme } from '../theme.js';
 export default function JoinView() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [step, setStep] = useState('code'); // 'code' | 'name'
+  const [step, setStep] = useState('code');
   const [joinCode, setJoinCode] = useState(searchParams.get('code') || '');
   const [sessionInfo, setSessionInfo] = useState(null);
   const [displayName, setDisplayName] = useState('');
@@ -13,7 +13,6 @@ export default function JoinView() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Auto-validate if code was passed via URL
     if (searchParams.get('code')) {
       validateCode(searchParams.get('code'));
     }
@@ -28,11 +27,14 @@ export default function JoinView() {
       if (data.themeColor) {
         applyTheme(data.themeColor, data.lightMode);
       }
-      // Check if we already have a participantId for this session (auto-resume)
       const savedPid = localStorage.getItem(`participant:${data.sessionId}`);
       if (savedPid) {
-        navigate(data.status === 'waiting' ? `/lobby/${data.sessionId}` : `/game/${data.sessionId}`);
-        return;
+        const check = await fetch(`/api/session/${data.sessionId}/participant/${savedPid}`);
+        if (check.ok) {
+          navigate(data.status === 'waiting' ? `/lobby/${data.sessionId}` : `/game/${data.sessionId}`);
+          return;
+        }
+        localStorage.removeItem(`participant:${data.sessionId}`);
       }
       setStep('name');
     } else {
@@ -62,7 +64,6 @@ export default function JoinView() {
       localStorage.setItem(`participant:${sessionId}`, participantId);
       navigate(`/lobby/${sessionId}`);
     } else if (res.status === 409) {
-      // Name already taken — resume as that participant
       const { participantId, sessionId } = await res.json();
       localStorage.setItem(`participant:${sessionId}`, participantId);
       navigate(sessionInfo?.status === 'waiting' ? `/lobby/${sessionId}` : `/game/${sessionId}`);

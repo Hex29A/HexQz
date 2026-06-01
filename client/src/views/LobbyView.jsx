@@ -26,6 +26,10 @@ export default function LobbyView() {
       setParticipantCount(prev => prev + 1);
     });
 
+    socket.on('session:get_ready', () => {
+      navigate(`/game/${sessionId}`);
+    });
+
     socket.on('session:started', () => {
       navigate(`/game/${sessionId}`);
     });
@@ -35,7 +39,11 @@ export default function LobbyView() {
       if (data.status === 'finished') navigate(`/results/${sessionId}`);
     });
 
-    // Initial state check
+    socket.on('session:reset', () => {
+      localStorage.removeItem(`participant:${sessionId}`);
+      navigate('/join');
+    });
+
     fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
       if (data.themeColor) applyTheme(data.themeColor, data.lightMode);
       if (data.status === 'active') navigate(`/game/${sessionId}`);
@@ -45,8 +53,10 @@ export default function LobbyView() {
 
     return () => {
       socket.off('session:participant_joined');
+      socket.off('session:get_ready');
       socket.off('session:started');
       socket.off('session:state');
+      socket.off('session:reset');
     };
   }, [sessionId, participantId, navigate]);
 

@@ -1,8 +1,6 @@
 services:
   quiz:
     build: .
-    ports:
-      - "${PORT:-3042}:3042"
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
@@ -12,3 +10,33 @@ services:
       - PORT=3042
       - DB_PATH=/app/data/hexqz.sqlite
     restart: unless-stopped
+    networks:
+      - quiz-network
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/quiz.conf:/etc/nginx/conf.d/default.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - quiz
+    restart: unless-stopped
+    networks:
+      - quiz-network
+
+  stress-test:
+    build: ./stress-test
+    networks:
+      - quiz-network
+    environment:
+      - ADMIN_SECRET=${ADMIN_SECRET}
+      - AUTO_START=${AUTO_START:-false}
+    profiles:
+      - testing
+
+networks:
+  quiz-network:
+    driver: bridge

@@ -7,6 +7,7 @@ import JoinView from './views/JoinView.jsx';
 import LobbyView from './views/LobbyView.jsx';
 import GameView from './views/GameView.jsx';
 import ResultsView from './views/ResultsView.jsx';
+import DisplayView from './views/DisplayView.jsx';
 import ThemeOverlay from './components/ThemeOverlay.jsx';
 
 export default function App() {
@@ -14,10 +15,11 @@ export default function App() {
     <BrowserRouter>
       <ThemeOverlay />
       <Routes>
-        <Route path="/" element={<LandingView />} />
+        <Route path="/" element={<div className="flex items-center justify-center min-h-screen"><div className="text-gray-600">404</div></div>} />
         <Route path="/admin" element={<AdminDashboardView />} />
         <Route path="/admin/:adminToken" element={<AdminView />} />
         <Route path="/host/:sessionId" element={<HostView />} />
+        <Route path="/display/:sessionId" element={<DisplayView />} />
         <Route path="/join" element={<JoinView />} />
         <Route path="/lobby/:sessionId" element={<LobbyView />} />
         <Route path="/game/:sessionId" element={<GameView />} />

@@ -1,0 +1,13 @@
+{
+  "name": "hexqz-stress-test",
+  "version": "1.0.0",
+  "description": "Stress testing for HexQz quiz platform",
+  "type": "module",
+  "scripts": {
+    "test": "node stress-test.js",
+    "test:parallel": "node parallel-stress-test.js"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.2"
+  }
+}

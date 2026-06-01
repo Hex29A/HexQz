@@ -1,9 +1,10 @@
 import { useState } from 'react';
 
-export default function Scoreboard({ scores, mini = false, breakdown }) {
+export default function Scoreboard({ scores, mini = false, breakdown, displayMode = false, maxVisible }) {
   if (!scores || scores.length === 0) return null;
 
   const medals = ['🥇', '🥈', '🥉'];
+  const visibleScores = maxVisible ? scores.slice(0, maxVisible) : scores;
 
   if (mini) {
     return (
@@ -13,7 +14,7 @@ export default function Scoreboard({ scores, mini = false, breakdown }) {
           {scores.slice(0, 5).map((s, i) => (
             <div key={i} className="flex justify-between text-sm">
               <span>{i < 3 ? medals[i] : `${i + 1}.`} {s.name}</span>
-              <span className="font-mono">{s.score}</span>
+              <span className="font-mono">{s.score.toLocaleString()}</span>
             </div>
           ))}
           {scores.length > 5 && <span className="text-text-secondary text-xs">+{scores.length - 5} more</span>}
@@ -22,11 +23,41 @@ export default function Scoreboard({ scores, mini = false, breakdown }) {
     );
   }
 
+  if (displayMode) {
+    return (
+      <div className="flex flex-col gap-4">
+        {visibleScores.map((s, i) => (
+          <div 
+            key={i} 
+            className={`rounded-xl p-6 ${i < 3 ? 'bg-gradient-to-r from-accent/20 to-accent/5 border-2 border-accent/50' : 'bg-bg-card/70 border-2 border-border-theme'}`}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-6">
+                <span className="text-5xl w-16 text-center">{i < 3 ? medals[i] : <span className="text-text-secondary text-3xl font-bold">{i + 1}</span>}</span>
+                <div>
+                  <p className="font-bold text-3xl">{s.name}</p>
+                  {s.team && <p className="text-text-secondary text-xl mt-1">{s.team}</p>}
+                </div>
+              </div>
+              <span className="text-4xl font-bold font-mono">{s.score.toLocaleString()}</span>
+            </div>
+          </div>
+        ))}
+        {maxVisible && scores.length > maxVisible && (
+          <p className="text-center text-text-secondary text-xl">+{scores.length - maxVisible} more players</p>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2">
-      {scores.map((s, i) => (
+      {visibleScores.map((s, i) => (
         <PlayerRow key={i} player={s} rank={i} medals={medals} details={breakdown?.[s.name]} />
       ))}
+      {maxVisible && scores.length > maxVisible && (
+        <p className="text-center text-text-secondary text-sm">+{scores.length - maxVisible} more</p>
+      )}
     </div>
   );
 }
@@ -49,7 +80,7 @@ function PlayerRow({ player, rank, medals, details }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xl font-mono font-bold">{player.score}</span>
+          <span className="text-xl font-mono font-bold">{player.score.toLocaleString()}</span>
           {hasDetails && (
             <span className={`text-text-secondary transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}>▾</span>
           )}
