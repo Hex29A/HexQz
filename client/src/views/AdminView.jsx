@@ -31,6 +31,11 @@ export default function AdminView() {
   const [sessions, setSessions] = useState([]);
   const [editing, setEditing] = useState(null); // question being edited
   const [showForm, setShowForm] = useState(false);
+  const [showSessionDialog, setShowSessionDialog] = useState(false);
+  const [newSessionName, setNewSessionName] = useState('');
+  const [useTimers, setUseTimers] = useState(true);
+  const [sessionAnswerTime, setSessionAnswerTime] = useState(30);
+  const [sessionScoreboardPause, setSessionScoreboardPause] = useState(10);
 
   const loadQuiz = async () => {
     const res = await fetch(`/api/quiz/${adminToken}`);
@@ -45,30 +50,29 @@ export default function AdminView() {
   useEffect(() => { loadQuiz(); loadSessions(); }, [adminToken]);
 
   const startSession = async () => {
-    const res = await fetch(`/api/quiz/${adminToken}/session`, { method: 'POST' });
+    setShowSessionDialog(true);
+  };
+
+  const createSession = async () => {
+    const res = await fetch(`/api/quiz/${adminToken}/session`, { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        sessionName: newSessionName.trim() || null,
+        useTimers,
+        answerTimeSeconds: useTimers ? sessionAnswerTime : null,
+        scoreboardPauseSeconds: sessionScoreboardPause
+      })
+    });
     const data = await res.json();
     if (res.ok) {
+      setShowSessionDialog(false);
+      setNewSessionName('');
+      setUseTimers(true);
+      setSessionAnswerTime(30);
       navigate(`/host/${data.sessionId}?token=${adminToken}`);
-    } else if (res.status === 409) {
-      // Session already exists — ask what to do
-      const action = confirm(
-        'There is already an active session for this quiz.\n\nOK = Go to existing session\nCancel = End it and create a new one'
-      );
-      if (action) {
-        navigate(`/host/${data.sessionId}?token=${adminToken}`);
-      } else {
-        // End the existing session
-        await fetch(`/api/session/${data.sessionId}/end`, {
-          method: 'POST',
-          headers: { 'X-Admin-Token': adminToken }
-        });
-        // Create new session
-        const res2 = await fetch(`/api/quiz/${adminToken}/session`, { method: 'POST' });
-        const data2 = await res2.json();
-        if (res2.ok) {
-          navigate(`/host/${data2.sessionId}?token=${adminToken}`);
-        }
-      }
+    } else {
+      alert('Failed to create session: ' + (data.error || 'Unknown error'));
     }
   };
 
@@ -91,10 +95,16 @@ export default function AdminView() {
     await fetch(`/api/quiz/${adminToken}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: quiz.title, themeColor: quiz.themeColor, lightMode: newMode, logoUrl: quiz.logoUrl })
+      body: JSON.stringify({ 
+        title: quiz.title, 
+        themeColor: quiz.themeColor, 
+        lightMode: newMode, 
+        logoUrl: quiz.logoUrl
+      })
     });
     setQuiz({ ...quiz, lightMode: newMode });
   };
+
 
   const deleteSession = async (sessionId) => {
     if (!confirm('Delete this session and all its data?')) return;
@@ -114,7 +124,7 @@ export default function AdminView() {
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">{quiz.title}</h1>
         <button onClick={startSession} className="px-6 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition">
-          Start Session
+          Create New Session
         </button>
       </div>
 
@@ -189,41 +199,173 @@ export default function AdminView() {
           <h2 className="text-xl font-bold mb-3">Sessions</h2>
           <div className="flex flex-col gap-2">
             {sessions.map(s => (
-              <div key={s.id} className="p-3 bg-gray-800 rounded-lg border border-gray-700">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${
-                      s.status === 'active' ? 'bg-green-900 text-green-300' :
-                      s.status === 'waiting' ? 'bg-yellow-900 text-yellow-300' :
-                      'bg-gray-700 text-gray-400'
-                    }`}>{s.status}</span>
-                    <span className="font-mono text-sm">{s.joinCode}</span>
-                    <span className="text-gray-500 text-sm">{s.participantCount} players</span>
+              <div key={s.id} className="group">
+                {(s.status === 'waiting' || s.status === 'active') ? (
+                  <div 
+                    onClick={() => navigate(`/host/${s.id}?token=${adminToken}`)}
+                    className="p-4 bg-gray-800 rounded-lg border border-gray-700 hover:border-accent hover:bg-gray-750 cursor-pointer transition-all"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 flex-1">
+                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${
+                          s.status === 'active' ? 'bg-green-900 text-green-300' :
+                          'bg-yellow-900 text-yellow-300'
+                        }`}>{s.status}</span>
+                        {s.sessionName && (
+                          <span className="text-lg font-bold text-white">{s.sessionName}</span>
+                        )}
+                        <span className="font-mono text-lg font-semibold text-accent">{s.joinCode}</span>
+                        <span className="text-gray-500 text-sm">{s.participantCount} players</span>
+                        {s.status === 'active' && (
+                          <span className="text-blue-400 text-sm">Q{s.currentQuestionIndex + 1}</span>
+                        )}
+                        <span className="text-gray-600 text-xs">
+                          {s.answerTimeSeconds ? `⏱️${s.answerTimeSeconds}s` : '✋ Manual'}
+                          {s.autoMode && ' · Auto'}
+                          {s.scoreboardPauseSeconds && ` · ${s.scoreboardPauseSeconds}s pause`}
+                        </span>
+                        <span className="text-accent text-sm opacity-0 group-hover:opacity-100 transition">→ Open Host View</span>
+                      </div>
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); window.open(`/display/${s.id}?token=${adminToken}`, '_blank'); }} 
+                          className="text-sm text-blue-400 hover:text-blue-300 transition"
+                        >
+                          📺 Display
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); navigate(`/results/${s.id}?token=${adminToken}`); }} 
+                          className="text-sm text-gray-400 hover:text-white transition"
+                        >
+                          Results
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} 
+                          className="text-sm text-red-400 hover:text-red-300 transition"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex gap-3">
-                    {(s.status === 'waiting' || s.status === 'active') && (
-                      <button onClick={() => navigate(`/host/${s.id}?token=${adminToken}`)} className="text-sm text-accent hover:underline">
-                        Host
-                      </button>
+                ) : (
+                  <div className="p-3 bg-gray-800 rounded-lg border border-gray-700">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-gray-700 text-gray-400">
+                          {s.status}
+                        </span>
+                        {s.sessionName && (
+                          <span className="font-semibold text-white">{s.sessionName}</span>
+                        )}
+                        <span className="font-mono text-sm">{s.joinCode}</span>
+                        <span className="text-gray-500 text-sm">{s.participantCount} players</span>
+                        <span className="text-gray-600 text-xs">
+                          {s.answerTimeSeconds ? `⏱️${s.answerTimeSeconds}s` : '✋ Manual'}
+                          {s.autoMode && ' · Auto'}
+                          {s.scoreboardPauseSeconds && ` · ${s.scoreboardPauseSeconds}s pause`}
+                        </span>
+                      </div>
+                      <div className="flex gap-3">
+                        <button onClick={() => navigate(`/host/${s.id}?token=${adminToken}`)} className="text-sm text-yellow-400 hover:underline">
+                          Review
+                        </button>
+                        <button onClick={() => navigate(`/results/${s.id}?token=${adminToken}`)} className="text-sm text-gray-400 hover:text-white">
+                          Results
+                        </button>
+                        <button onClick={() => deleteSession(s.id)} className="text-sm text-red-400 hover:text-red-300">
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    {s.winner && (
+                      <p className="text-sm text-gray-400 mt-1">Winner: <span className="text-white">{s.winner.name}</span> <span className="text-gray-500">({s.winner.score} pts)</span></p>
                     )}
-                    {s.status === 'finished' && (
-                      <button onClick={() => navigate(`/host/${s.id}?token=${adminToken}`)} className="text-sm text-yellow-400 hover:underline">
-                        Review
-                      </button>
-                    )}
-                    <button onClick={() => navigate(`/results/${s.id}?token=${adminToken}`)} className="text-sm text-gray-400 hover:text-white">
-                      Results
-                    </button>
-                    <button onClick={() => deleteSession(s.id)} className="text-sm text-red-400 hover:text-red-300">
-                      Delete
-                    </button>
                   </div>
-                </div>
-                {s.winner && (
-                  <p className="text-sm text-gray-400 mt-1">Winner: <span className="text-white">{s.winner.name}</span> <span className="text-gray-500">({s.winner.score} pts)</span></p>
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {showSessionDialog && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" onClick={() => setShowSessionDialog(false)}>
+          <div onClick={e => e.stopPropagation()} className="bg-gray-800 rounded-xl p-6 w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">Create New Session</h2>
+            <div className="mb-4">
+              <label className="block text-sm text-gray-400 mb-2">Session Name (optional)</label>
+              <input
+                type="text"
+                placeholder="e.g., Room A, Monday Evening, etc."
+                value={newSessionName}
+                onChange={(e) => setNewSessionName(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && createSession()}
+                className="w-full px-3 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-accent"
+                autoFocus
+                maxLength={50}
+              />
+              <p className="text-xs text-gray-500 mt-1">Helps identify sessions when running multiple simultaneously</p>
+            </div>
+
+            {/* Timer Settings */}
+            <div className="mb-4 p-4 bg-gray-700/50 rounded-lg">
+              <label className="flex items-center gap-3 cursor-pointer mb-3">
+                <input
+                  type="checkbox"
+                  checked={useTimers}
+                  onChange={(e) => setUseTimers(e.target.checked)}
+                  className="w-5 h-5 rounded accent-accent"
+                />
+                <div>
+                  <span className="font-semibold">⏱️ Use automatic timers</span>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {useTimers ? 'Questions auto-close when time runs out' : 'Host manually closes each question'}
+                  </p>
+                </div>
+              </label>
+              {useTimers && (
+                <div className="ml-8 space-y-3">
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-1">Answer Time (seconds)</label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="300"
+                      value={sessionAnswerTime}
+                      onChange={(e) => setSessionAnswerTime(Math.max(5, Math.min(300, parseInt(e.target.value) || 30)))}
+                      className="w-full px-3 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-1">Scoreboard Pause (seconds)</label>
+                    <input
+                      type="number"
+                      min="3"
+                      max="60"
+                      value={sessionScoreboardPause}
+                      onChange={(e) => setSessionScoreboardPause(Math.max(3, Math.min(60, parseInt(e.target.value) || 10)))}
+                      className="w-full px-3 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => { setShowSessionDialog(false); setNewSessionName(''); setUseTimers(true); setSessionAnswerTime(30); }}
+                className="flex-1 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={createSession}
+                className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold transition"
+              >
+                Create & Enter
+              </button>
+            </div>
           </div>
         </div>
       )}
