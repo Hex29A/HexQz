@@ -1,8 +1,27 @@
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import db from '../db/db.js';
+import { executeQuestionClose } from './session.js';
 
 const router = Router();
+
+// Calculate points based on response time
+// basePoints: maximum points (e.g., 1000)
+// responseTimeMs: time taken to answer in milliseconds
+// maxTimeSeconds: maximum allowed time to answer
+function calculateSpeedPoints(basePoints, responseTimeMs, maxTimeSeconds = 30) {
+  if (!responseTimeMs || responseTimeMs < 0) return basePoints;
+  
+  const maxTimeMs = maxTimeSeconds * 1000;
+  if (responseTimeMs >= maxTimeMs) return 0; // Too slow, no points
+  
+  // Linear decay: 100% points at 0ms, 0% at maxTime
+  // Points = basePoints * (1 - (timeElapsed / maxTime))
+  const timeRatio = responseTimeMs / maxTimeMs;
+  const multiplier = Math.max(0, 1 - timeRatio);
+  
+  return Math.round(basePoints * multiplier);
+}
 
 // Platform status
 router.get('/status', (req, res) => {
@@ -46,6 +65,13 @@ router.get('/join/:joinCode', (req, res) => {
     lightMode: !!session.light_mode,
     logoUrl: session.logo_url
   });
+});
+
+// Check if a participant still exists (used by JoinView auto-resume)
+router.get('/session/:sessionId/participant/:participantId', (req, res) => {
+  const p = db.prepare('SELECT id FROM participant WHERE id = ? AND session_id = ?').get(req.params.participantId, req.params.sessionId);
+  if (!p) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
 });
 
 // Register participant
@@ -98,6 +124,7 @@ router.post('/answer', (req, res) => {
 
   // Validate question belongs to the session's quiz
   const session = db.prepare('SELECT * FROM session WHERE id = ?').get(participant.session_id);
+  const quiz = db.prepare('SELECT * FROM quiz WHERE id = ?').get(session.quiz_id);
   const question = db.prepare('SELECT * FROM question WHERE id = ? AND quiz_id = ?').get(questionId, session.quiz_id);
   if (!question) return res.status(404).json({ error: 'Question not found' });
 
@@ -107,8 +134,22 @@ router.post('/answer', (req, res) => {
     return res.status(410).json({ error: 'Question is closed' });
   }
 
+  // Calculate response time (ms since question started)
+  let responseTimeMs = null;
+  if (session.question_started_at) {
+    responseTimeMs = Date.now() - (session.question_started_at * 1000);
+    // Ensure valid response time (positive and reasonable)
+    if (responseTimeMs < 0) responseTimeMs = 0;
+    if (responseTimeMs > 999999) responseTimeMs = null; // Over 16 minutes, likely error
+  }
+
   // Check for existing response (allow revision)
-  const existing = db.prepare('SELECT id, points_awarded FROM response WHERE participant_id = ? AND question_id = ?').get(participantId, questionId);
+  const existing = db.prepare('SELECT id, points_awarded, response_time_ms FROM response WHERE participant_id = ? AND question_id = ?').get(participantId, questionId);
+
+  // Use the fastest response time if revising
+  if (existing && existing.response_time_ms && responseTimeMs) {
+    responseTimeMs = Math.min(responseTimeMs, existing.response_time_ms);
+  }
 
   // Validate textAnswer length
   if (textAnswer && textAnswer.length > 100) {
@@ -118,13 +159,21 @@ router.post('/answer', (req, res) => {
   // Determine correctness
   let isCorrect = 0;
   let points = 0;
+  const isTimed = !!session.answer_time_seconds;
+  const basePoints = isTimed ? 1000 : 1; // Speed-based scoring when timed, 1pt per correct when untimed
+  const speedMaxTime = session.answer_time_seconds || 30;
+
+  // Scoring helper: speed-based when timed, flat 1pt when untimed
+  const awardPoints = (responseTimeMs) => {
+    return isTimed ? calculateSpeedPoints(basePoints, responseTimeMs, speedMaxTime) : 1;
+  };
 
   if (question.type === 'single_choice' || question.type === 'true_false') {
     if (answerId) {
       const answer = db.prepare('SELECT * FROM answer WHERE id = ? AND question_id = ?').get(answerId, questionId);
       if (answer && answer.is_correct) {
         isCorrect = 1;
-        points = 10;
+        points = awardPoints(responseTimeMs);
       }
     }
   } else if (question.type === 'multiple_choice') {
@@ -136,7 +185,7 @@ router.post('/answer', (req, res) => {
       const selectedSet = new Set(selectedIds);
       if (correctIds.size === selectedSet.size && [...correctIds].every(id => selectedSet.has(id))) {
         isCorrect = 1;
-        points = 10;
+        points = awardPoints(responseTimeMs);
       }
     }
   } else if (question.type === 'free_text') {
@@ -145,7 +194,7 @@ router.post('/answer', (req, res) => {
       const match = correctAnswers.some(a => a.text.toLowerCase().trim() === textAnswer.toLowerCase().trim());
       if (match) {
         isCorrect = 1;
-        points = 10;
+        points = awardPoints(responseTimeMs);
       }
     }
   } else if (question.type === 'numeric') {
@@ -153,7 +202,7 @@ router.post('/answer', (req, res) => {
       const num = parseFloat(textAnswer);
       if (!isNaN(num) && Math.abs(num - question.correct_value) <= question.tolerance) {
         isCorrect = 1;
-        points = 10;
+        points = awardPoints(responseTimeMs);
       }
     }
   }
@@ -182,7 +231,12 @@ router.post('/answer', (req, res) => {
       }
 
       if (totalParts > 0) {
-        points = Math.round((matchedParts / totalParts) * 10);
+        if (isTimed) {
+          const partialMultiplier = matchedParts / totalParts;
+          points = Math.round(calculateSpeedPoints(1000, responseTimeMs, speedMaxTime) * partialMultiplier);
+        } else {
+          points = matchedParts; // 1pt per correct part in untimed mode
+        }
         isCorrect = matchedParts === totalParts ? 1 : 0;
       }
     }
@@ -200,9 +254,9 @@ router.post('/answer', (req, res) => {
     // Revision: update existing response and adjust score
     const oldPoints = existing.points_awarded || 0;
     db.prepare(`
-      UPDATE response SET answer_id = ?, text_answer = ?, is_correct = ?, points_awarded = ?, answered_at = unixepoch()
+      UPDATE response SET answer_id = ?, text_answer = ?, is_correct = ?, points_awarded = ?, response_time_ms = ?, answered_at = unixepoch()
       WHERE id = ?
-    `).run(storedAnswerId, storedTextAnswer, isCorrect, points, existing.id);
+    `).run(storedAnswerId, storedTextAnswer, isCorrect, points, responseTimeMs, existing.id);
 
     const pointsDiff = points - oldPoints;
     if (pointsDiff !== 0 && question.type !== 'estimation') {
@@ -212,9 +266,9 @@ router.post('/answer', (req, res) => {
     // New response
     const responseId = randomUUID();
     db.prepare(`
-      INSERT INTO response (id, participant_id, question_id, answer_id, text_answer, is_correct, points_awarded)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(responseId, participantId, questionId, storedAnswerId, storedTextAnswer, isCorrect, points);
+      INSERT INTO response (id, participant_id, question_id, answer_id, text_answer, is_correct, points_awarded, response_time_ms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(responseId, participantId, questionId, storedAnswerId, storedTextAnswer, isCorrect, points, responseTimeMs);
 
     if (points > 0 && question.type !== 'estimation') {
       db.prepare('UPDATE participant SET score = score + ? WHERE id = ?').run(points, participantId);
@@ -238,6 +292,19 @@ router.post('/answer', (req, res) => {
     answered,
     waiting
   });
+
+  // Check if all players have answered - trigger early close
+  if (answered.length === allParticipants.length && allParticipants.length > 0) {
+    console.log(`[EARLY-ADVANCE] All ${allParticipants.length} players answered question ${questionId}, triggering early close`);
+    
+    // Get scoreboard pause from session settings
+    const scoreboardPauseSeconds = session.scoreboard_pause_seconds || 10;
+    
+    // Trigger immediate close (this will cancel any existing timer via the closedQuestions check)
+    setImmediate(() => {
+      executeQuestionClose(io, session.id, scoreboardPauseSeconds);
+    });
+  }
 
   res.json({ received: true });
 });
