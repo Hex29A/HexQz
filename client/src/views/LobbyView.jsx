@@ -7,19 +7,20 @@ export default function LobbyView() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const participantId = localStorage.getItem(`participant:${sessionId}`);
+  const participantSecret = localStorage.getItem(`participantSecret:${sessionId}`);
   const [participantCount, setParticipantCount] = useState(0);
 
   useEffect(() => {
-    if (!participantId) {
+    if (!participantId || !participantSecret) {
       navigate('/join');
       return;
     }
 
     socket.connect();
-    socket.emit('join:session', { sessionId, participantId });
+    socket.emit('join:session', { sessionId, participantId, participantSecret });
 
     socket.on('connect', () => {
-      socket.emit('rejoin:session', { sessionId, participantId });
+      socket.emit('rejoin:session', { sessionId, participantId, participantSecret });
     });
 
     socket.on('session:participant_joined', () => {

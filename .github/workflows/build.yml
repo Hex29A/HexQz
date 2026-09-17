@@ -1,10 +1,32 @@
-name: Build and push Docker image
+name: Test, build and push Docker image
 on:
   push:
     branches: [main]
+  pull_request:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Server tests
+        working-directory: server
+        run: |
+          npm ci
+          npm audit --audit-level=high
+          npm test
+      - name: Client build
+        working-directory: client
+        run: |
+          npm ci
+          npm run build
+
   build:
+    needs: test
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -22,6 +44,8 @@ jobs:
         with:
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/hex29a/hexqz:latest
+          tags: |
+            ghcr.io/hex29a/hexqz:latest
+            ghcr.io/hex29a/hexqz:sha-${{ github.sha }}
           build-args: |
             BUILD_HASH=${{ github.sha }}

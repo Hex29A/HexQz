@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes, timingSafeEqual } from 'crypto';
 import db from '../db/db.js';
 import { executeQuestionClose } from './session.js';
 
@@ -45,10 +45,22 @@ router.get('/join/:joinCode', (req, res) => {
   });
 });
 
+// Participant auth (issue #8): participant.id is public (shown on screens,
+// used as React keys); the secret is handed out once at registration and is
+// required to answer or to join the socket room as that participant.
+export function authenticateParticipant(participantId, secret) {
+  if (!participantId || typeof secret !== 'string' || !secret) return null;
+  const p = db.prepare('SELECT * FROM participant WHERE id = ?').get(participantId);
+  if (!p || !p.secret) return null;
+  const a = Buffer.from(p.secret), b = Buffer.from(secret);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  return p;
+}
+
 // Check if a participant still exists (used by JoinView auto-resume)
 router.get('/session/:sessionId/participant/:participantId', (req, res) => {
-  const p = db.prepare('SELECT id FROM participant WHERE id = ? AND session_id = ?').get(req.params.participantId, req.params.sessionId);
-  if (!p) return res.status(404).json({ error: 'Not found' });
+  const p = authenticateParticipant(req.params.participantId, req.headers['x-participant-secret']);
+  if (!p || p.session_id !== req.params.sessionId) return res.status(404).json({ error: 'Not found' });
   res.json({ ok: true });
 });
 
@@ -68,37 +80,39 @@ router.post('/join/:joinCode/register', (req, res) => {
   // Check if name is already taken in this session
   const existing = db.prepare('SELECT id FROM participant WHERE session_id = ? AND display_name = ?').get(session.id, displayName.trim());
   if (existing) {
-    return res.status(409).json({ error: 'Name already taken', participantId: existing.id, sessionId: session.id });
+    // Never hand out the existing participant's id (issue #8); resume works
+    // through the secret stored in the original browser.
+    return res.status(409).json({ error: 'Name already taken' });
   }
 
   const participantId = randomUUID();
+  const participantSecret = randomBytes(24).toString('hex');
   db.prepare(`
-    INSERT INTO participant (id, session_id, display_name, team_name)
-    VALUES (?, ?, ?, ?)
-  `).run(participantId, session.id, displayName.trim(), teamName?.trim() || null);
+    INSERT INTO participant (id, session_id, display_name, team_name, secret)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(participantId, session.id, displayName.trim(), teamName?.trim() || null, participantSecret);
 
-  // Broadcast to session room
+  // Broadcast to session room (no ids — other players don't need them)
   const io = req.app.get('io');
   io.to(`session:${session.id}`).emit('session:participant_joined', {
-    participantId,
     displayName: displayName.trim(),
     teamName: teamName?.trim() || null
   });
 
-  res.status(201).json({ participantId, sessionId: session.id });
+  res.status(201).json({ participantId, participantSecret, sessionId: session.id });
 });
 
 // Submit answer
 router.post('/answer', (req, res) => {
-  const { participantId, questionId, answerId, textAnswer } = req.body;
+  const { participantId, participantSecret, questionId, answerId, textAnswer } = req.body;
 
   if (!participantId || !questionId) {
     return res.status(400).json({ error: 'participantId and questionId are required' });
   }
 
-  // Validate participant
-  const participant = db.prepare('SELECT * FROM participant WHERE id = ?').get(participantId);
-  if (!participant) return res.status(404).json({ error: 'Participant not found' });
+  // Validate participant (id + secret, issue #8)
+  const participant = authenticateParticipant(participantId, participantSecret);
+  if (!participant) return res.status(403).json({ error: 'Invalid participant credentials' });
 
   // Validate question belongs to the session's quiz
   const session = db.prepare('SELECT * FROM session WHERE id = ?').get(participant.session_id);

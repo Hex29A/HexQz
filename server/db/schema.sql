@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS participant (
   session_id TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
   display_name TEXT NOT NULL,
   team_name TEXT,
-  score INTEGER NOT NULL DEFAULT 0
+  score INTEGER NOT NULL DEFAULT 0,
+  secret TEXT
 );
 
 CREATE TABLE IF NOT EXISTS response (
@@ -63,4 +64,10 @@ CREATE TABLE IF NOT EXISTS response (
   answered_at INTEGER DEFAULT (unixepoch()),
   response_time_ms INTEGER,
   UNIQUE(participant_id, question_id)
+);
+
+CREATE TABLE IF NOT EXISTS admin_session (
+  token TEXT PRIMARY KEY,
+  created_at INTEGER DEFAULT (unixepoch()),
+  expires_at INTEGER NOT NULL
 );

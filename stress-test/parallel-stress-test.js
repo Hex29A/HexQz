@@ -148,6 +148,7 @@ class VirtualPlayer {
       }
       const data = await res.json();
       this.participantId = data.participantId;
+      this.participantSecret = data.participantSecret;
       return true;
     } catch (error) {
       this.errors.push(`Registration error: ${error.message}`);
@@ -173,13 +174,15 @@ class VirtualPlayer {
         // Rejoin with state sync
         this.socket.emit('rejoin:session', {
           sessionId: this.sessionId,
-          participantId: this.participantId
+          participantId: this.participantId,
+          participantSecret: this.participantSecret
         });
         this.onEvent('reconnected');
       } else {
         this.socket.emit('join:session', {
           sessionId: this.sessionId,
-          participantId: this.participantId
+          participantId: this.participantId,
+          participantSecret: this.participantSecret
         });
       }
       if (initialResolve) { initialResolve(); initialResolve = null; }
@@ -258,7 +261,7 @@ class VirtualPlayer {
   async submitAnswer(question, answers) {
     if (!this.participantId) return;
 
-    const body = { participantId: this.participantId, questionId: question.id };
+    const body = { participantId: this.participantId, participantSecret: this.participantSecret, questionId: question.id };
 
     if (question.type === 'single_choice' || question.type === 'true_false') {
       if (answers.length > 0) body.answerId = answers[Math.floor(Math.random() * answers.length)].id;

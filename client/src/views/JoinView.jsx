@@ -28,14 +28,18 @@ export default function JoinView() {
         applyTheme(data.themeColor, data.lightMode);
       }
       const savedPid = localStorage.getItem(`participant:${data.sessionId}`);
-      if (savedPid) {
-        const check = await fetch(`/api/session/${data.sessionId}/participant/${savedPid}`);
+      const savedSecret = localStorage.getItem(`participantSecret:${data.sessionId}`);
+      if (savedPid && savedSecret) {
+        const check = await fetch(`/api/session/${data.sessionId}/participant/${savedPid}`, {
+          headers: { 'X-Participant-Secret': savedSecret }
+        });
         if (check.ok) {
           navigate(data.status === 'waiting' ? `/lobby/${data.sessionId}` : `/game/${data.sessionId}`);
           return;
         }
-        localStorage.removeItem(`participant:${data.sessionId}`);
       }
+      localStorage.removeItem(`participant:${data.sessionId}`);
+      localStorage.removeItem(`participantSecret:${data.sessionId}`);
       setStep('name');
     } else {
       const err = await res.json();
@@ -60,13 +64,10 @@ export default function JoinView() {
     });
 
     if (res.ok) {
-      const { participantId, sessionId } = await res.json();
+      const { participantId, participantSecret, sessionId } = await res.json();
       localStorage.setItem(`participant:${sessionId}`, participantId);
+      localStorage.setItem(`participantSecret:${sessionId}`, participantSecret);
       navigate(`/lobby/${sessionId}`);
-    } else if (res.status === 409) {
-      const { participantId, sessionId } = await res.json();
-      localStorage.setItem(`participant:${sessionId}`, participantId);
-      navigate(sessionInfo?.status === 'waiting' ? `/lobby/${sessionId}` : `/game/${sessionId}`);
     } else {
       const err = await res.json();
       setError(err.error || 'Registration failed');

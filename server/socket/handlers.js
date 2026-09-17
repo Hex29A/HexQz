@@ -1,11 +1,12 @@
 import db from '../db/db.js';
+import { authenticateParticipant } from '../routes/join.js';
 
 export default function registerSocketHandlers(io) {
   io.on('connection', (socket) => {
-    socket.on('join:session', ({ sessionId, participantId }) => {
+    socket.on('join:session', ({ sessionId, participantId, participantSecret }) => {
       if (!sessionId || !participantId) return;
-      const participant = db.prepare('SELECT * FROM participant WHERE id = ? AND session_id = ?').get(participantId, sessionId);
-      if (!participant) return;
+      const participant = authenticateParticipant(participantId, participantSecret);
+      if (!participant || participant.session_id !== sessionId) return;
       socket.join(`session:${sessionId}`);
       socket.data = { sessionId, participantId, role: 'participant' };
     });
@@ -86,11 +87,11 @@ export default function registerSocketHandlers(io) {
       }
     });
 
-    socket.on('rejoin:session', ({ sessionId, participantId }) => {
+    socket.on('rejoin:session', ({ sessionId, participantId, participantSecret }) => {
       if (!sessionId) return;
       if (participantId) {
-        const participant = db.prepare('SELECT * FROM participant WHERE id = ? AND session_id = ?').get(participantId, sessionId);
-        if (!participant) return;
+        const participant = authenticateParticipant(participantId, participantSecret);
+        if (!participant || participant.session_id !== sessionId) return;
       }
       socket.join(`session:${sessionId}`);
       const session = db.prepare('SELECT * FROM session WHERE id = ?').get(sessionId);

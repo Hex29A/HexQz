@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes, timingSafeEqual } from 'crypto';
 import multer from 'multer';
 import { join, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
@@ -38,10 +38,27 @@ const router = Router();
 
 // Admin authentication. ADMIN_SECRET is mandatory: without it every admin
 // route answers 503 instead of silently being open (issue #10).
+// The cookie carries a random session token stored in admin_session, never
+// the secret itself (issue #2). The X-Admin-Secret header (scripts/CLI) is
+// compared in constant time.
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ba = Buffer.from(a), bb = Buffer.from(b);
+  return ba.length === bb.length && timingSafeEqual(ba, bb);
+}
+
+function validSessionToken(token) {
+  if (!token) return false;
+  const row = db.prepare('SELECT token FROM admin_session WHERE token = ? AND expires_at > unixepoch()').get(token);
+  return !!row;
+}
+
 function hasAdminSecret(req) {
   const secret = process.env.ADMIN_SECRET;
   if (!secret) return false;
-  return req.cookies.admin_session === secret || req.headers['x-admin-secret'] === secret;
+  return validSessionToken(req.cookies.admin_session) || safeEqual(req.headers['x-admin-secret'], secret);
 }
 
 function requireAdmin(req, res, next) {
@@ -64,13 +81,23 @@ router.post('/admin/login', loginLimiter, (req, res) => {
   const secret = process.env.ADMIN_SECRET;
   if (!secret) return res.status(503).json({ error: 'ADMIN_SECRET not configured' });
   const { password } = req.body;
-  if (!password || password !== secret) return res.status(401).json({ error: 'Invalid password' });
-  res.cookie('admin_session', secret, {
+  if (!safeEqual(password, secret)) return res.status(401).json({ error: 'Invalid password' });
+  const token = randomBytes(32).toString('hex');
+  db.prepare('DELETE FROM admin_session WHERE expires_at <= unixepoch()').run();
+  db.prepare('INSERT INTO admin_session (token, expires_at) VALUES (?, unixepoch() + ?)').run(token, Math.floor(SESSION_TTL_MS / 1000));
+  res.cookie('admin_session', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
-    maxAge: 24 * 60 * 60 * 1000
+    maxAge: SESSION_TTL_MS
   });
+  res.json({ ok: true });
+});
+
+router.post('/admin/logout', (req, res) => {
+  const token = req.cookies.admin_session;
+  if (token) db.prepare('DELETE FROM admin_session WHERE token = ?').run(token);
+  res.clearCookie('admin_session');
   res.json({ ok: true });
 });
 

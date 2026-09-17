@@ -107,7 +107,7 @@ To update: `git pull && docker compose up -d --build` in the stack directory.
 |---|---|---|
 | `PORT` | `3042` | Server port |
 | `BASE_URL` | auto-detected | Public URL for QR codes (set when behind reverse proxy) |
-| `ADMIN_SECRET` | — | Master password for `/admin` dashboard. Dashboard disabled if unset. |
+| `ADMIN_SECRET` | — | **Required.** Master password for `/admin` dashboard, quiz creation and uploads. The server refuses to start in production without it. Login sets a random session cookie (24 h); `POST /api/admin/logout` revokes it. |
 | `PLATFORM_NAME` | `hexqz` | Shown on landing page when no quiz is active |
 | `PLATFORM_LOGO_URL` | — | Platform logo URL |
 | `DB_PATH` | `data/hexqz.sqlite` | SQLite database file path |

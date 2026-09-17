@@ -68,6 +68,13 @@ export default function AdminDashboardView() {
     loadQuizzes();
   };
 
+  const logout = async () => {
+    await fetch('/api/admin/logout', { method: 'POST' });
+    setQuizzes([]);
+    setPassword('');
+    setLoggedIn(false);
+  };
+
   useEffect(() => { loadQuizzes(); }, []);
 
   if (!loggedIn) {
@@ -94,7 +101,10 @@ export default function AdminDashboardView() {
 
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-6">Admin Dashboard</h1>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+        <button onClick={logout} className="text-sm text-gray-400 hover:text-white transition">Log out</button>
+      </div>
 
       <form onSubmit={createQuiz} className="flex gap-2 mb-8">
         <input

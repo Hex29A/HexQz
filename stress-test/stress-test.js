@@ -110,6 +110,7 @@ class VirtualPlayer {
 
       const data = await res.json();
       this.participantId = data.participantId;
+      this.participantSecret = data.participantSecret;
       return true;
     } catch (error) {
       console.error(`[${this.name}] Registration error:`, error.message);
@@ -128,7 +129,8 @@ class VirtualPlayer {
         this.connected = true;
         this.socket.emit('join:session', { 
           sessionId: this.sessionId, 
-          participantId: this.participantId 
+          participantId: this.participantId,
+          participantSecret: this.participantSecret
         });
         resolve();
       });
@@ -183,6 +185,7 @@ class VirtualPlayer {
 
     const body = {
       participantId: this.participantId,
+      participantSecret: this.participantSecret,
       questionId: question.id
     };
 

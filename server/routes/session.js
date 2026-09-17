@@ -499,7 +499,7 @@ router.get('/session/:sessionId/current', (req, res) => {
       autoMode: !!session.auto_mode,
       answerTimeSeconds,
       scoreboardPauseSeconds,
-      participants: participants.map(p => ({ id: p.id, displayName: p.display_name, teamName: p.team_name }))
+      participants: participants.map(p => ({ displayName: p.display_name, teamName: p.team_name }))
     });
   }
 

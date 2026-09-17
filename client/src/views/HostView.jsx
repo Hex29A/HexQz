@@ -475,7 +475,7 @@ export default function HostView() {
         <p className="text-sm text-gray-500 mb-8">Players can join anytime - enter the host control panel to start</p>
         <div className="flex flex-wrap gap-2 mb-8 justify-center">
           {participants.map(p => (
-            <span key={p.participantId || p.id} className="px-3 py-1 bg-gray-800 rounded-full text-sm">
+            <span key={p.displayName} className="px-3 py-1 bg-gray-800 rounded-full text-sm">
               {p.displayName} {p.teamName ? `(${p.teamName})` : ''}
             </span>
           ))}
@@ -549,7 +549,7 @@ export default function HostView() {
           ) : (
             <div className="flex flex-wrap gap-2">
               {participants.map(p => (
-                <span key={p.participantId || p.id} className="px-3 py-1 bg-gray-700 rounded-full text-sm">
+                <span key={p.displayName} className="px-3 py-1 bg-gray-700 rounded-full text-sm">
                   {p.displayName} {p.teamName ? `(${p.teamName})` : ''}
                 </span>
               ))}

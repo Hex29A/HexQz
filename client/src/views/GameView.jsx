@@ -34,6 +34,7 @@ export default function GameView() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const participantId = localStorage.getItem(`participant:${sessionId}`);
+  const participantSecret = localStorage.getItem(`participantSecret:${sessionId}`);
   const [phase, setPhase] = useState('waiting');
   const [question, setQuestion] = useState(null);
   const [answers, setAnswers] = useState([]);
@@ -95,10 +96,10 @@ export default function GameView() {
   }, [phase, questionStartedAt, answerTimeSeconds]);
 
   useEffect(() => {
-    if (!participantId) { navigate('/join'); return; }
+    if (!participantId || !participantSecret) { navigate('/join'); return; }
     socket.connect();
-    socket.emit('join:session', { sessionId, participantId });
-    socket.on('connect', () => socket.emit('rejoin:session', { sessionId, participantId }));
+    socket.emit('join:session', { sessionId, participantId, participantSecret });
+    socket.on('connect', () => socket.emit('rejoin:session', { sessionId, participantId, participantSecret }));
     socket.on('session:question', (data) => {
       setQuestion(data.question); setAnswers(data.answers || []); setQuestionIndex(data.questionIndex);
       setTotalQuestions(data.totalQuestions); setSubmitted(false); setSelectedAnswer(null); setTextAnswer('');
@@ -140,7 +141,7 @@ export default function GameView() {
   }, [phase, getReadyCountdown]);
 
   const submitAnswer = async () => {
-    const body = { participantId, questionId: question.id };
+    const body = { participantId, participantSecret, questionId: question.id };
     if (question.type === 'single_choice' || question.type === 'true_false') {
       if (!selectedAnswer) return;
       body.answerId = selectedAnswer;

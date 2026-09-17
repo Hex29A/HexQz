@@ -24,6 +24,7 @@ try { db.exec('ALTER TABLE session ADD COLUMN scoreboard_pause_seconds INTEGER D
 try { db.exec('ALTER TABLE session ADD COLUMN question_started_at INTEGER'); } catch {}
 try { db.exec('ALTER TABLE session ADD COLUMN current_phase TEXT DEFAULT \'waiting\''); } catch {}
 try { db.exec('ALTER TABLE response ADD COLUMN response_time_ms INTEGER'); } catch {}
+try { db.exec('ALTER TABLE participant ADD COLUMN secret TEXT'); } catch {}
 
 // Migration: ON DELETE rules on participant/response (issue #18).
 // SQLite cannot ALTER a foreign key, so tables created before the rules
@@ -41,10 +42,11 @@ if (!hasOnDelete('response', 'question', 'CASCADE') || !hasOnDelete('participant
         session_id TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
         display_name TEXT NOT NULL,
         team_name TEXT,
-        score INTEGER NOT NULL DEFAULT 0
+        score INTEGER NOT NULL DEFAULT 0,
+        secret TEXT
       );
-      INSERT INTO participant_new (id, session_id, display_name, team_name, score)
-        SELECT id, session_id, display_name, team_name, score FROM participant;
+      INSERT INTO participant_new (id, session_id, display_name, team_name, score, secret)
+        SELECT id, session_id, display_name, team_name, score, secret FROM participant;
       DROP TABLE participant;
       ALTER TABLE participant_new RENAME TO participant;
 

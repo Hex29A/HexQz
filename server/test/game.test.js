@@ -43,7 +43,12 @@ async function createSession(token, opts = {}) {
 async function register(joinCode, displayName) {
   const r = await c.post(`/join/${joinCode}/register`, { displayName });
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  return r.body.participantId;
+  assert.ok(r.body.participantSecret, 'registration returns a secret');
+  return { participantId: r.body.participantId, participantSecret: r.body.participantSecret };
+}
+
+function answer(who, questionId, payload) {
+  return c.post('/answer', { ...who, questionId, ...payload });
 }
 
 async function start(sessionId, token) {
@@ -73,6 +78,26 @@ test('#10: upload requires admin secret or a valid quiz token', async () => {
   assert.equal(r.status, 401);
 });
 
+test('#2: admin cookie is a random session token, not the secret', async () => {
+  const login = await c.post('/admin/login', { password: ADMIN_SECRET });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie');
+  assert.ok(cookie.startsWith('admin_session='));
+  const tokenValue = cookie.split(';')[0].split('=')[1];
+  assert.notEqual(tokenValue, ADMIN_SECRET);
+  assert.equal(tokenValue.length, 64);
+  // token works, the raw secret in the cookie does not
+  const ok = await c.get('/admin/quizzes', { Cookie: `admin_session=${tokenValue}` });
+  assert.equal(ok.status, 200);
+  const bad = await c.get('/admin/quizzes', { Cookie: `admin_session=${ADMIN_SECRET}` });
+  assert.equal(bad.status, 401);
+  // logout revokes
+  const out = await c.post('/admin/logout', {}, { Cookie: `admin_session=${tokenValue}` });
+  assert.equal(out.status, 200);
+  const after = await c.get('/admin/quizzes', { Cookie: `admin_session=${tokenValue}` });
+  assert.equal(after.status, 401);
+});
+
 test('#3: admin login is rate limited', async () => {
   let last;
   for (let i = 0; i < 11; i++) {
@@ -94,15 +119,21 @@ test('#16 #9 #7 #19 #18: full game flow scores correctly', async () => {
   assert.equal(state.question.correctValue, null);
 
   // #9: revising an answer must not keep the earlier (faster) response time
-  await c.post('/answer', { participantId: a, questionId: estimationId, textAnswer: '5' });
-  const firstTime = db.prepare('SELECT response_time_ms FROM response WHERE participant_id = ?').get(a).response_time_ms;
+  await answer(a, estimationId, { textAnswer: '5' });
+  const firstTime = db.prepare('SELECT response_time_ms FROM response WHERE participant_id = ?').get(a.participantId).response_time_ms;
   await sleep(400);
-  await c.post('/answer', { participantId: a, questionId: estimationId, textAnswer: '100' });
-  const secondTime = db.prepare('SELECT response_time_ms FROM response WHERE participant_id = ?').get(a).response_time_ms;
+  await answer(a, estimationId, { textAnswer: '100' });
+  const secondTime = db.prepare('SELECT response_time_ms FROM response WHERE participant_id = ?').get(a.participantId).response_time_ms;
   assert.ok(secondTime >= firstTime + 300, `revised time ${secondTime} should be later than ${firstTime}`);
 
-  await c.post('/answer', { participantId: b, questionId: estimationId, textAnswer: '90' });
-  await c.post('/answer', { participantId: cId, questionId: estimationId, textAnswer: '50' });
+  // #8: answering as someone else (right id, wrong secret) is rejected
+  const spoof = await c.post('/answer', { participantId: b.participantId, participantSecret: a.participantSecret, questionId: estimationId, textAnswer: '1' });
+  assert.equal(spoof.status, 403);
+  const noSecret = await c.post('/answer', { participantId: b.participantId, questionId: estimationId, textAnswer: '1' });
+  assert.equal(noSecret.status, 403);
+
+  await answer(b, estimationId, { textAnswer: '90' });
+  await answer(cId, estimationId, { textAnswer: '50' });
 
   // All answered -> early close -> estimation scored
   const closed = await waitFor(c, s1.sessionId, s => s.currentPhase !== 'question');
@@ -116,7 +147,7 @@ test('#16 #9 #7 #19 #18: full game flow scores correctly', async () => {
   const s2 = await createSession(token);
   const d = await register(s2.joinCode, 'Dan');
   await start(s2.sessionId, token);
-  await c.post('/answer', { participantId: d, questionId: estimationId, textAnswer: '100' });
+  await answer(d, estimationId, { textAnswer: '100' });
   const closed2 = await waitFor(c, s2.sessionId, s => s.currentPhase !== 'question');
   assert.deepEqual(scoresByName(closed2), { Dan: 1200 });
   const s1Again = (await c.get(`/session/${s1.sessionId}/current`)).body;
@@ -128,7 +159,7 @@ test('#16 #9 #7 #19 #18: full game flow scores correctly', async () => {
   assert.equal(cont.status, 200);
   const q2 = await waitFor(c, s1.sessionId, s => s.currentPhase === 'question' && s.question.id === choiceId);
   const wrong = q2.answers.find(x => x.text === 'Oslo');
-  await c.post('/answer', { participantId: cId, questionId: choiceId, answerId: wrong.id });
+  await answer(cId, choiceId, { answerId: wrong.id });
 
   // #19: override awards on the session's scale (untimed => 1 point), not a flat 10
   const responses = await c.get(`/session/${s1.sessionId}/question/${choiceId}/responses`, { 'x-admin-token': token });
@@ -151,6 +182,18 @@ test('#16 #9 #7 #19 #18: full game flow scores correctly', async () => {
   const delSession = await c.del(`/quiz/${token}/session/${s2.sessionId}`);
   assert.equal(delSession.status, 200);
   assert.equal(db.prepare('SELECT COUNT(*) c FROM participant WHERE session_id = ?').get(s2.sessionId).c, 0);
+});
+
+test('#8: duplicate name does not leak the existing participant id', async () => {
+  const token = await createQuiz();
+  const s = await createSession(token);
+  await register(s.joinCode, 'Eva');
+  const dup = await c.post(`/join/${s.joinCode}/register`, { displayName: 'Eva' });
+  assert.equal(dup.status, 409);
+  assert.equal(dup.body.participantId, undefined);
+  // resume check needs the secret
+  const state = (await c.get(`/session/${s.sessionId}/current`)).body;
+  assert.ok(state.participants.every(p => p.id === undefined), 'no ids in public participant list');
 });
 
 test('#18: migration rebuilds tables with ON DELETE rules', () => {
