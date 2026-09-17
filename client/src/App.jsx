@@ -1,5 +1,4 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import LandingView from './views/LandingView.jsx';
 import AdminDashboardView from './views/AdminDashboardView.jsx';
 import AdminView from './views/AdminView.jsx';
 import HostView from './views/HostView.jsx';

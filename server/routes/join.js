@@ -73,8 +73,9 @@ router.post('/join/:joinCode/register', (req, res) => {
   if (session.status === 'finished') return res.status(410).json({ error: 'This quiz has ended' });
 
   const { displayName, teamName } = req.body;
-  if (!displayName || !displayName.trim()) return res.status(400).json({ error: 'Display name is required' });
+  if (typeof displayName !== 'string' || !displayName.trim()) return res.status(400).json({ error: 'Display name is required' });
   if (displayName.trim().length > 30) return res.status(400).json({ error: 'Name too long (max 30)' });
+  if (teamName !== undefined && teamName !== null && typeof teamName !== 'string') return res.status(400).json({ error: 'Invalid team name' });
   if (teamName && teamName.trim().length > 30) return res.status(400).json({ error: 'Team name too long (max 30)' });
 
   // Check if name is already taken in this session
@@ -106,8 +107,17 @@ router.post('/join/:joinCode/register', (req, res) => {
 router.post('/answer', (req, res) => {
   const { participantId, participantSecret, questionId, answerId, textAnswer } = req.body;
 
-  if (!participantId || !questionId) {
+  if (typeof participantId !== 'string' || typeof questionId !== 'string') {
     return res.status(400).json({ error: 'participantId and questionId are required' });
+  }
+  if (answerId !== undefined && answerId !== null) {
+    const ids = Array.isArray(answerId) ? answerId : [answerId];
+    if (ids.length > 20 || !ids.every(id => typeof id === 'string' && id.length <= 64)) {
+      return res.status(400).json({ error: 'Invalid answerId' });
+    }
+  }
+  if (textAnswer !== undefined && textAnswer !== null && typeof textAnswer !== 'string' && typeof textAnswer !== 'object') {
+    return res.status(400).json({ error: 'Invalid textAnswer' });
   }
 
   // Validate participant (id + secret, issue #8)
@@ -139,9 +149,10 @@ router.post('/answer', (req, res) => {
   // on the time of the revision, never on the earlier attempt (issue #9).
   const existing = db.prepare('SELECT id, points_awarded FROM response WHERE participant_id = ? AND question_id = ?').get(participantId, questionId);
 
-  // Validate textAnswer length
-  if (textAnswer && textAnswer.length > 100) {
-    return res.status(400).json({ error: 'Answer too long (max 100)' });
+  // Validate textAnswer length (multi_part sends a small JSON object/string)
+  const textLen = typeof textAnswer === 'string' ? textAnswer.length : (textAnswer ? JSON.stringify(textAnswer).length : 0);
+  if (textLen > (question.type === 'multi_part' ? 1000 : 100)) {
+    return res.status(400).json({ error: 'Answer too long' });
   }
 
   // Determine correctness

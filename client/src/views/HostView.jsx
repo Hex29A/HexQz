@@ -275,7 +275,7 @@ export default function HostView() {
         'X-Admin-Token': adminToken,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ autoMode: false })
+      body: JSON.stringify({})
     });
   };
 

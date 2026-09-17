@@ -221,7 +221,7 @@ export default function AdminView() {
                         )}
                         <span className="text-gray-600 text-xs">
                           {s.answerTimeSeconds ? `⏱️${s.answerTimeSeconds}s` : '✋ Manual'}
-                          {s.autoMode && ' · Auto'}
+                          
                           {s.scoreboardPauseSeconds && ` · ${s.scoreboardPauseSeconds}s pause`}
                         </span>
                         <span className="text-accent text-sm opacity-0 group-hover:opacity-100 transition">→ Open Host View</span>
@@ -262,7 +262,7 @@ export default function AdminView() {
                         <span className="text-gray-500 text-sm">{s.participantCount} players</span>
                         <span className="text-gray-600 text-xs">
                           {s.answerTimeSeconds ? `⏱️${s.answerTimeSeconds}s` : '✋ Manual'}
-                          {s.autoMode && ' · Auto'}
+                          
                           {s.scoreboardPauseSeconds && ` · ${s.scoreboardPauseSeconds}s pause`}
                         </span>
                       </div>

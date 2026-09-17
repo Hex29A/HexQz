@@ -6,9 +6,13 @@ import { fileURLToPath } from 'url';
 import { mkdirSync } from 'fs';
 import rateLimit from 'express-rate-limit';
 import db from '../db/db.js';
+import { str, hexColor, imageUrl, num, questionType, answerList } from '../validate.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const uploadsDir = join(__dirname, '..', '..', 'uploads');
+// Same directory index.js serves as /uploads. Defaults to <server>/uploads
+// (/app/uploads in the image); the old '../../uploads' resolved to /uploads
+// in the container, outside the mounted volume, so files vanished on recreate.
+export const uploadsDir = process.env.UPLOADS_DIR || join(__dirname, '..', 'uploads');
 mkdirSync(uploadsDir, { recursive: true });
 
 const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
@@ -87,7 +91,7 @@ router.post('/admin/login', loginLimiter, (req, res) => {
   db.prepare('INSERT INTO admin_session (token, expires_at) VALUES (?, unixepoch() + ?)').run(token, Math.floor(SESSION_TTL_MS / 1000));
   res.cookie('admin_session', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: req.secure, // true behind the TLS proxy, false on plain http (issue #20)
     sameSite: 'strict',
     maxAge: SESSION_TTL_MS
   });
@@ -121,12 +125,12 @@ router.get('/admin/quizzes', requireAdmin, (req, res) => {
 });
 
 router.post('/quiz', requireAdmin, (req, res) => {
-  const { title, themeColor, logoUrl } = req.body;
-  if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required' });
-  if (title.trim().length > 200) return res.status(400).json({ error: 'Title too long (max 200)' });
+  const title = str(req.body.title, { field: 'Title', max: 200, required: true });
+  const themeColor = hexColor(req.body.themeColor);
+  const logoUrl = imageUrl(req.body.logoUrl, 'logoUrl');
   const id = randomUUID();
   const adminToken = randomUUID();
-  db.prepare('INSERT INTO quiz (id, title, admin_token, theme_color, logo_url) VALUES (?, ?, ?, ?, ?)').run(id, title.trim(), adminToken, themeColor || '#6366f1', logoUrl || null);
+  db.prepare('INSERT INTO quiz (id, title, admin_token, theme_color, logo_url) VALUES (?, ?, ?, ?, ?)').run(id, title, adminToken, themeColor, logoUrl);
   res.status(201).json({ quizId: id, adminToken });
 });
 
@@ -147,25 +151,24 @@ router.get('/quiz/:adminToken', (req, res) => {
 router.put('/quiz/:adminToken', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
-  const { title, themeColor, logoUrl, lightMode, answerTimeSeconds, scoreboardPauseSeconds } = req.body;
-  if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required' });
+  const { lightMode, answerTimeSeconds, scoreboardPauseSeconds } = req.body;
+  const title = str(req.body.title, { field: 'Title', max: 200, required: true });
+  const themeColor = hexColor(req.body.themeColor);
+  const logoUrl = imageUrl(req.body.logoUrl, 'logoUrl');
   const answerTime = answerTimeSeconds !== undefined ? Math.max(5, Math.min(300, parseInt(answerTimeSeconds) || 30)) : quiz.answer_time_seconds;
   const scoreboardPause = scoreboardPauseSeconds !== undefined ? Math.max(3, Math.min(60, parseInt(scoreboardPauseSeconds) || 10)) : quiz.scoreboard_pause_seconds;
-  db.prepare('UPDATE quiz SET title = ?, theme_color = ?, logo_url = ?, light_mode = ?, answer_time_seconds = ?, scoreboard_pause_seconds = ? WHERE id = ?').run(title.trim(), themeColor || '#6366f1', logoUrl || null, lightMode ? 1 : 0, answerTime, scoreboardPause, quiz.id);
+  db.prepare('UPDATE quiz SET title = ?, theme_color = ?, logo_url = ?, light_mode = ?, answer_time_seconds = ?, scoreboard_pause_seconds = ? WHERE id = ?').run(title, themeColor, logoUrl, lightMode ? 1 : 0, answerTime, scoreboardPause, quiz.id);
   res.json({ ok: true });
 });
 
 router.delete('/quiz/:adminToken', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
-  const sessions = db.prepare('SELECT id FROM session WHERE quiz_id = ?').all(quiz.id);
-  for (const s of sessions) {
-    const participants = db.prepare('SELECT id FROM participant WHERE session_id = ?').all(s.id);
-    for (const p of participants) { db.prepare('DELETE FROM response WHERE participant_id = ?').run(p.id); }
-    db.prepare('DELETE FROM participant WHERE session_id = ?').run(s.id);
-  }
-  db.prepare('DELETE FROM session WHERE quiz_id = ?').run(quiz.id);
-  db.prepare('DELETE FROM quiz WHERE id = ?').run(quiz.id);
+  // participants/responses/questions/answers cascade via foreign keys
+  db.transaction(() => {
+    db.prepare('DELETE FROM session WHERE quiz_id = ?').run(quiz.id);
+    db.prepare('DELETE FROM quiz WHERE id = ?').run(quiz.id);
+  })();
   res.json({ ok: true });
 });
 
@@ -182,31 +185,27 @@ router.delete('/quiz/:adminToken/session/:sessionId', (req, res) => {
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
   const session = db.prepare('SELECT * FROM session WHERE id = ? AND quiz_id = ?').get(req.params.sessionId, quiz.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
-  const participants = db.prepare('SELECT id FROM participant WHERE session_id = ?').all(session.id);
-  for (const p of participants) { db.prepare('DELETE FROM response WHERE participant_id = ?').run(p.id); }
-  db.prepare('DELETE FROM participant WHERE session_id = ?').run(session.id);
-  db.prepare('DELETE FROM session WHERE id = ?').run(session.id);
+  db.prepare('DELETE FROM session WHERE id = ?').run(session.id); // participants/responses cascade
   res.json({ ok: true });
 });
 
 router.post('/quiz/:adminToken/question', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
-  const { text, imageUrl, type, answers, correctValue, tolerance } = req.body;
-  if (!text || !text.trim()) return res.status(400).json({ error: 'Question text is required' });
-  const validTypes = ['single_choice', 'multiple_choice', 'true_false', 'free_text', 'numeric', 'estimation', 'multi_part'];
-  if (!validTypes.includes(type)) return res.status(400).json({ error: 'Invalid question type' });
+  const text = str(req.body.text, { field: 'Question text', max: 1000, required: true });
+  const type = questionType(req.body.type);
+  const image = imageUrl(req.body.imageUrl, 'imageUrl');
+  const correctValue = num(req.body.correctValue, { field: 'correctValue' });
+  const tolerance = num(req.body.tolerance, { field: 'tolerance', min: 0 }) ?? 0;
+  const answers = answerList(req.body.answers);
   const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM question WHERE quiz_id = ?').get(quiz.id);
   const sortOrder = (maxOrder?.m ?? -1) + 1;
   const questionId = randomUUID();
-  db.prepare('INSERT INTO question (id, quiz_id, sort_order, text, image_url, type, correct_value, tolerance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(questionId, quiz.id, sortOrder, text.trim(), imageUrl || null, type, correctValue ?? null, tolerance ?? 0);
-  if (answers && Array.isArray(answers)) {
+  db.transaction(() => {
+    db.prepare('INSERT INTO question (id, quiz_id, sort_order, text, image_url, type, correct_value, tolerance) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(questionId, quiz.id, sortOrder, text, image, type, correctValue, tolerance);
     const insertAnswer = db.prepare('INSERT INTO answer (id, question_id, text, is_correct, part_label) VALUES (?, ?, ?, ?, ?)');
-    for (const a of answers) {
-      if (!a.text || !a.text.trim()) continue;
-      insertAnswer.run(randomUUID(), questionId, a.text.trim(), a.isCorrect ? 1 : 0, a.partLabel || null);
-    }
-  }
+    for (const a of answers) insertAnswer.run(randomUUID(), questionId, a.text, a.isCorrect, a.partLabel);
+  })();
   res.status(201).json({ questionId });
 });
 
@@ -215,17 +214,21 @@ router.put('/quiz/:adminToken/question/:questionId', (req, res) => {
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
   const question = db.prepare('SELECT * FROM question WHERE id = ? AND quiz_id = ?').get(req.params.questionId, quiz.id);
   if (!question) return res.status(404).json({ error: 'Question not found' });
-  const { text, imageUrl, type, answers, correctValue, tolerance, sortOrder } = req.body;
-  if (!text || !text.trim()) return res.status(400).json({ error: 'Question text is required' });
-  db.prepare('UPDATE question SET text = ?, image_url = ?, type = ?, correct_value = ?, tolerance = ?, sort_order = ? WHERE id = ?').run(text.trim(), imageUrl || null, type || question.type, correctValue ?? null, tolerance ?? 0, sortOrder ?? question.sort_order, question.id);
-  if (answers && Array.isArray(answers)) {
-    db.prepare('DELETE FROM answer WHERE question_id = ?').run(question.id);
-    const insertAnswer = db.prepare('INSERT INTO answer (id, question_id, text, is_correct, part_label) VALUES (?, ?, ?, ?, ?)');
-    for (const a of answers) {
-      if (!a.text || !a.text.trim()) continue;
-      insertAnswer.run(randomUUID(), question.id, a.text.trim(), a.isCorrect ? 1 : 0, a.partLabel || null);
+  const text = str(req.body.text, { field: 'Question text', max: 1000, required: true });
+  const type = questionType(req.body.type, question.type);
+  const image = imageUrl(req.body.imageUrl, 'imageUrl');
+  const correctValue = num(req.body.correctValue, { field: 'correctValue' });
+  const tolerance = num(req.body.tolerance, { field: 'tolerance', min: 0 }) ?? 0;
+  const sortOrder = num(req.body.sortOrder, { field: 'sortOrder', integer: true, min: 0 }) ?? question.sort_order;
+  const answers = req.body.answers === undefined ? null : answerList(req.body.answers);
+  db.transaction(() => {
+    db.prepare('UPDATE question SET text = ?, image_url = ?, type = ?, correct_value = ?, tolerance = ?, sort_order = ? WHERE id = ?').run(text, image, type, correctValue, tolerance, sortOrder, question.id);
+    if (answers) {
+      db.prepare('DELETE FROM answer WHERE question_id = ?').run(question.id);
+      const insertAnswer = db.prepare('INSERT INTO answer (id, question_id, text, is_correct, part_label) VALUES (?, ?, ?, ?, ?)');
+      for (const a of answers) insertAnswer.run(randomUUID(), question.id, a.text, a.isCorrect, a.partLabel);
     }
-  }
+  })();
   res.json({ ok: true });
 });
 

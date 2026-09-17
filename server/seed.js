@@ -1,14 +1,21 @@
 import db from './db/db.js';
 import { randomUUID } from 'crypto';
 
-// Seed a demo quiz with all question types
-const existing = db.prepare("SELECT id FROM quiz WHERE title = ?").get('Demo Quiz – All Question Types');
-if (!existing) {
+// Seeds a demo quiz with all question types. Only runs in development or when
+// SEED_DEMO=true (issue #15); the admin URL is never logged — open /admin to
+// find the quiz.
+export default function seedDemoQuiz() {
+  const enabled = process.env.SEED_DEMO === 'true' || process.env.NODE_ENV === 'development';
+  if (!enabled) return;
+
+  const title = 'Demo Quiz – All Question Types';
+  if (db.prepare('SELECT id FROM quiz WHERE title = ?').get(title)) return;
+
   const quizId = randomUUID();
   const adminToken = randomUUID();
 
-  db.prepare(`INSERT INTO quiz (id, title, admin_token, theme_color) VALUES (?, ?, ?, ?)`)
-    .run(quizId, 'Demo Quiz – All Question Types', adminToken, '#6366f1');
+  db.prepare('INSERT INTO quiz (id, title, admin_token, theme_color) VALUES (?, ?, ?, ?)')
+    .run(quizId, title, adminToken, '#6366f1');
 
   const questions = [
     {
@@ -82,16 +89,16 @@ if (!existing) {
     VALUES (?, ?, ?, ?, ?)
   `);
 
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
-    const questionId = randomUUID();
-    insertQuestion.run(questionId, quizId, i, q.text, q.type, q.correctValue ?? null, q.tolerance ?? 0);
-    for (const a of q.answers) {
-      insertAnswer.run(randomUUID(), questionId, a.text, a.isCorrect ? 1 : 0, a.partLabel || null);
+  db.transaction(() => {
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      const questionId = randomUUID();
+      insertQuestion.run(questionId, quizId, i, q.text, q.type, q.correctValue ?? null, q.tolerance ?? 0);
+      for (const a of q.answers) {
+        insertAnswer.run(randomUUID(), questionId, a.text, a.isCorrect ? 1 : 0, a.partLabel || null);
+      }
     }
-  }
+  })();
 
-  console.log(`Demo quiz seeded. Admin URL: /admin/${adminToken}`);
-} else {
-  console.log('Demo quiz already exists, skipping seed.');
+  console.log('Demo quiz seeded (find it under /admin).');
 }

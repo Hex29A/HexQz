@@ -98,6 +98,12 @@ test('#2: admin cookie is a random session token, not the secret', async () => {
   assert.equal(after.status, 401);
 });
 
+test('#20: login cookie is not Secure on plain http', async () => {
+  const login = await c.post('/admin/login', { password: ADMIN_SECRET });
+  assert.equal(login.status, 200);
+  assert.doesNotMatch(login.headers.get('set-cookie'), /Secure/);
+});
+
 test('#3: admin login is rate limited', async () => {
   let last;
   for (let i = 0; i < 11; i++) {
@@ -194,6 +200,66 @@ test('#8: duplicate name does not leak the existing participant id', async () =>
   // resume check needs the secret
   const state = (await c.get(`/session/${s.sessionId}/current`)).body;
   assert.ok(state.participants.every(p => p.id === undefined), 'no ids in public participant list');
+});
+
+test('#11: CSV export neutralises formulas and sanitises the filename', async () => {
+  const token = await createQuiz();
+  const r = await c.put(`/quiz/${token}`, { title: 'Fest "2026" =SUM(A1)/../x' });
+  assert.equal(r.status, 200);
+  const q = await c.post(`/quiz/${token}/question`, { text: '=HYPERLINK("http://evil")', type: 'free_text', answers: [{ text: 'ja', isCorrect: true }] });
+  assert.equal(q.status, 201);
+  const s = await createSession(token);
+  await register(s.joinCode, '@Eva');
+  await register(s.joinCode, '=SUM(A1)');
+  const res = await fetch(`${server.base}/api/session/${s.sessionId}/export`);
+  assert.equal(res.status, 200);
+  const disposition = res.headers.get('content-disposition');
+  assert.match(disposition, /filename="Fest_2026_SUM_A1_.._x-results.csv"/);
+  const csv = await res.text();
+  assert.ok(csv.includes(`"Q1: =HYPERLINK(""http://evil"")"`), 'quotes in question text are escaped');
+  assert.ok(csv.includes(`"'=SUM(A1)"`), 'formula in a name is neutralised');
+  assert.ok(csv.includes(`"'@Eva"`), 'name starting with @ is neutralised');
+});
+
+test('#12: request bodies are validated', async () => {
+  const bad = await c.post('/quiz', { title: 'x', themeColor: 'red' }, secretHeader);
+  assert.equal(bad.status, 400);
+  const badUrl = await c.post('/quiz', { title: 'x', logoUrl: 'javascript:alert(1)' }, secretHeader);
+  assert.equal(badUrl.status, 400);
+  const token = await createQuiz();
+  const badType = await c.post(`/quiz/${token}/question`, { text: 'x', type: 'essay' });
+  assert.equal(badType.status, 400);
+  const badNum = await c.post(`/quiz/${token}/question`, { text: 'x', type: 'numeric', correctValue: 'abc' });
+  assert.equal(badNum.status, 400);
+  const badJson = await fetch(`${server.base}/api/quiz`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...secretHeader }, body: '{nope' });
+  assert.equal(badJson.status, 400);
+  const okRel = await c.post(`/quiz/${token}/question`, { text: 'x', type: 'free_text', imageUrl: '/uploads/a.png', answers: [{ text: 'a', isCorrect: true }] });
+  assert.equal(okRel.status, 201);
+  const s = await createSession(token);
+  const badName = await c.post(`/join/${s.joinCode}/register`, { displayName: { $ne: 1 } });
+  assert.equal(badName.status, 400);
+});
+
+test('#14: security headers are set', async () => {
+  const res = await fetch(`${server.base}/api/version`);
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(res.headers.get('x-frame-options'), 'DENY');
+  assert.equal(res.headers.get('referrer-policy'), 'no-referrer');
+  assert.match(res.headers.get('content-security-policy'), /default-src 'self'/);
+  assert.equal(res.headers.get('strict-transport-security'), null, 'no HSTS on plain http');
+});
+
+test('#15: demo quiz is not seeded outside development', () => {
+  assert.equal(db.prepare("SELECT COUNT(*) c FROM quiz WHERE title LIKE 'Demo Quiz%'").get().c, 0);
+});
+
+test('#28: removed routes answer 404', async () => {
+  const token = await createQuiz();
+  const s = await createSession(token);
+  const end = await c.post(`/session/${s.sessionId}/end`, {}, { 'x-admin-token': token });
+  assert.equal(end.status, 404);
+  const next = await c.post(`/session/${s.sessionId}/next`, {}, { 'x-admin-token': token });
+  assert.equal(next.status, 404);
 });
 
 test('#18: migration rebuilds tables with ON DELETE rules', () => {
