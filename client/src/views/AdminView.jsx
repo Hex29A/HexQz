@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { rememberAdminToken } from '../lib/adminToken.js';
 
 const THEMES = [
   { id: 'indigo', label: 'Indigo', accent: '#6366f1', bg: '#0f172a', card: '#1e293b', text: '#f1f5f9', desc: 'Clean & modern' },
@@ -70,7 +71,7 @@ export default function AdminView() {
       setNewSessionName('');
       setUseTimers(true);
       setSessionAnswerTime(30);
-      navigate(`/host/${data.sessionId}?token=${adminToken}`);
+      rememberAdminToken(data.sessionId, adminToken); navigate(`/host/${data.sessionId}`);
     } else {
       alert('Failed to create session: ' + (data.error || 'Unknown error'));
     }
@@ -202,7 +203,7 @@ export default function AdminView() {
               <div key={s.id} className="group">
                 {(s.status === 'waiting' || s.status === 'active') ? (
                   <div 
-                    onClick={() => navigate(`/host/${s.id}?token=${adminToken}`)}
+                    onClick={() => { rememberAdminToken(s.id, adminToken); navigate(`/host/${s.id}`); }}
                     className="p-4 bg-gray-800 rounded-lg border border-gray-700 hover:border-accent hover:bg-gray-750 cursor-pointer transition-all"
                   >
                     <div className="flex items-center justify-between">
@@ -228,13 +229,13 @@ export default function AdminView() {
                       </div>
                       <div className="flex gap-3">
                         <button 
-                          onClick={(e) => { e.stopPropagation(); window.open(`/display/${s.id}?token=${adminToken}`, '_blank'); }} 
+                          onClick={(e) => { e.stopPropagation(); window.open(`/display/${s.id}`, '_blank'); }} 
                           className="text-sm text-blue-400 hover:text-blue-300 transition"
                         >
                           📺 Display
                         </button>
                         <button 
-                          onClick={(e) => { e.stopPropagation(); navigate(`/results/${s.id}?token=${adminToken}`); }} 
+                          onClick={(e) => { e.stopPropagation(); rememberAdminToken(s.id, adminToken); navigate(`/results/${s.id}`); }} 
                           className="text-sm text-gray-400 hover:text-white transition"
                         >
                           Results
@@ -267,10 +268,10 @@ export default function AdminView() {
                         </span>
                       </div>
                       <div className="flex gap-3">
-                        <button onClick={() => navigate(`/host/${s.id}?token=${adminToken}`)} className="text-sm text-yellow-400 hover:underline">
+                        <button onClick={() => { rememberAdminToken(s.id, adminToken); navigate(`/host/${s.id}`); }} className="text-sm text-yellow-400 hover:underline">
                           Review
                         </button>
-                        <button onClick={() => navigate(`/results/${s.id}?token=${adminToken}`)} className="text-sm text-gray-400 hover:text-white">
+                        <button onClick={() => { rememberAdminToken(s.id, adminToken); navigate(`/results/${s.id}`); }} className="text-sm text-gray-400 hover:text-white">
                           Results
                         </button>
                         <button onClick={() => deleteSession(s.id)} className="text-sm text-red-400 hover:text-red-300">

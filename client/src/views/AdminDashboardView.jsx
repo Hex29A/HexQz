@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { rememberAdminToken } from '../lib/adminToken.js';
 
 function VersionFooter() {
   const [version, setVersion] = useState(null);
@@ -138,7 +139,7 @@ export default function AdminDashboardView() {
                   <div className="flex items-center gap-3">
                     {q.latestSessionId && q.latestSessionStatus === 'finished' && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); navigate(`/results/${q.latestSessionId}?token=${q.adminToken}`); }}
+                        onClick={(e) => { e.stopPropagation(); rememberAdminToken(q.latestSessionId, q.adminToken); navigate(`/results/${q.latestSessionId}`); }}
                         className="text-sm text-gray-400 hover:text-white transition"
                       >Results</button>
                     )}

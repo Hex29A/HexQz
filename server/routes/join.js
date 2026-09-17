@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID, randomBytes, timingSafeEqual } from 'crypto';
 import db from '../db/db.js';
-import { executeQuestionClose } from './session.js';
+import { closeQuestion, getAnswerCount } from '../engine.js';
 
 const router = Router();
 
@@ -130,9 +130,9 @@ router.post('/answer', (req, res) => {
   const question = db.prepare('SELECT * FROM question WHERE id = ? AND quiz_id = ?').get(questionId, session.quiz_id);
   if (!question) return res.status(404).json({ error: 'Question not found' });
 
-  // Check current question matches (rejects closed/past questions)
+  // Only the question that is currently open accepts answers
   const questions = db.prepare('SELECT id FROM question WHERE quiz_id = ? ORDER BY sort_order').all(session.quiz_id);
-  if (questions[session.current_question_index]?.id !== questionId) {
+  if (session.status !== 'active' || session.current_phase !== 'question' || questions[session.current_question_index]?.id !== questionId) {
     return res.status(410).json({ error: 'Question is closed' });
   }
 
@@ -276,33 +276,13 @@ router.post('/answer', (req, res) => {
 
   // Emit answer count to session
   const io = req.app.get('io');
-  const answered = db.prepare(`
-    SELECT p.display_name FROM response r
-    JOIN participant p ON p.id = r.participant_id
-    WHERE r.question_id = ? AND p.session_id = ?
-  `).all(questionId, session.id).map(r => r.display_name);
-  const allParticipants = db.prepare('SELECT display_name FROM participant WHERE session_id = ?').all(session.id).map(p => p.display_name);
-  const waiting = allParticipants.filter(name => !answered.includes(name));
+  const answerCount = getAnswerCount(questionId, session.id);
+  io.to(`session:${session.id}`).emit('session:answer_count', { questionIndex: session.current_question_index, ...answerCount });
 
-  io.to(`session:${session.id}`).emit('session:answer_count', {
-    questionIndex: session.current_question_index,
-    count: answered.length,
-    total: allParticipants.length,
-    answered,
-    waiting
-  });
-
-  // Check if all players have answered - trigger early close
-  if (answered.length === allParticipants.length && allParticipants.length > 0) {
-    console.log(`[EARLY-ADVANCE] All ${allParticipants.length} players answered question ${questionId}, triggering early close`);
-    
-    // Get scoreboard pause from session settings
-    const scoreboardPauseSeconds = session.scoreboard_pause_seconds || 10;
-    
-    // Trigger immediate close (this will cancel any existing timer via the closedQuestions check)
-    setImmediate(() => {
-      executeQuestionClose(io, session.id, scoreboardPauseSeconds);
-    });
+  // Everyone answered: close early
+  if (answerCount.total > 0 && answerCount.count === answerCount.total) {
+    console.log(`[EARLY-CLOSE] All ${answerCount.total} players answered question ${questionId}`);
+    setImmediate(() => closeQuestion(session.id));
   }
 
   res.json({ received: true });

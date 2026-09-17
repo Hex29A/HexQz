@@ -1,14 +1,15 @@
-import { useState, useEffect } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import socket from '../socket.js';
+import useSessionSocket, { socket } from '../hooks/useSessionSocket.js';
+import { useCountdown } from '../hooks/useCountdown.js';
+import { getAdminToken } from '../lib/adminToken.js';
 import Scoreboard from '../components/Scoreboard.jsx';
 
 export default function HostView() {
   const { sessionId } = useParams();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const adminToken = searchParams.get('token');
+  const [adminToken] = useState(() => getAdminToken(sessionId));
   const [state, setState] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [answerCount, setAnswerCount] = useState({ count: 0, total: 0, answered: [], waiting: [] });
@@ -23,7 +24,6 @@ export default function HostView() {
   const [showReview, setShowReview] = useState(false);
   const [questions, setQuestions] = useState([]);
   const [reviewQuestionId, setReviewQuestionId] = useState(null);
-  const [timeRemaining, setTimeRemaining] = useState(null);
   const [answerTimeSeconds, setAnswerTimeSeconds] = useState(null);
   const [questionStartedAt, setQuestionStartedAt] = useState(null);
   const [sessionName, setSessionName] = useState('');
@@ -32,241 +32,86 @@ export default function HostView() {
   const [questionStats, setQuestionStats] = useState(null);
   const [roundWinner, setRoundWinner] = useState(null);
   const [nextQuestion, setNextQuestion] = useState(null);
+  const [joinCodeDisplay, setJoinCodeDisplay] = useState('');
 
-  useEffect(() => {
-    // Load initial state
-    fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
-      setState(data);
-      setScores(data.scores || []);
-      if (data.participants) setParticipants(data.participants);
-      if (data.answerTimeSeconds) setAnswerTimeSeconds(data.answerTimeSeconds);
-      if (data.sessionName) setSessionName(data.sessionName);
-      
-      // Restore phase state
-      if (data.currentPhase) {
-        setCurrentPhase(data.currentPhase);
-      }
-      
-      if (data.status === 'active') {
-        setStarted(true);
-        setCurrentQuestion(data.question);
-        setQuestionIndex(data.questionIndex);
-        setTotalQuestions(data.totalQuestions);
-        if (data.questionStartedAt) setQuestionStartedAt(data.questionStartedAt);
-        
-        // If in a result phase, request the latest state from server
-        if (data.currentPhase && data.currentPhase !== 'question') {
-          socket.connect();
-          socket.emit('host:session', { sessionId, adminToken });
-        }
-      }
-      if (data.status === 'finished') {
-        setFinished(true);
-        if (data.questions) setQuestions(data.questions);
-      }
-    });
+  const noResults = { count: 0, total: 0, answered: [], waiting: [] };
+  const inQuestion = started && !finished && !currentPhase && !waitingForContinue && !!currentQuestion;
+  const timeRemaining = useCountdown(questionStartedAt, answerTimeSeconds, inQuestion);
 
-    // Socket
-    socket.connect();
-    socket.emit('host:session', { sessionId, adminToken });
-
-    socket.on('connect', () => {
-      setConnected(true);
-      socket.emit('host:session', { sessionId, adminToken });
-      // Full state re-sync on reconnect
-      fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
-        setScores(data.scores || []);
-        if (data.participants) setParticipants(data.participants);
-        
-        // Restore phase state
-        if (data.currentPhase) {
-          setCurrentPhase(data.currentPhase);
-        }
-        
-        if (data.status === 'active') {
-          setStarted(true);
-          setCurrentQuestion(data.question);
-          setQuestionIndex(data.questionIndex);
-          setTotalQuestions(data.totalQuestions);
-        }
-        if (data.status === 'finished') {
-          setFinished(true);
-          if (data.questions) setQuestions(data.questions);
-        }
-      });
-    });
-
-    socket.on('disconnect', () => {
-      setConnected(false);
-    });
-
-    socket.on('session:participant_joined', (p) => {
-      setParticipants(prev => [...prev, p]);
-    });
-
-    socket.on('session:started', (data) => {
-      setStarted(true);
-      setCurrentQuestion(data.question);
-      setQuestionIndex(data.questionIndex);
-      setTotalQuestions(data.totalQuestions);
-      setAnswerCount({ count: 0, total: 0, answered: [], waiting: [] });
-      if (data.questionStartedAt) setQuestionStartedAt(data.questionStartedAt);
-      if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
-      setWaitingForContinue(false);
-      setCurrentPhase(null);
-      setQuestionStats(null);
-      setRoundWinner(null);
-      setNextQuestion(null);
-    });
-
-    socket.on('session:get_ready', (data) => {
-      setStarted(true);
-      if (data.totalQuestions) setTotalQuestions(data.totalQuestions);
-      // Clear result states - we're moving to next question
-      setWaitingForContinue(false);
-      setCurrentPhase('get_ready');
-      setQuestionStats(null);
-      setRoundWinner(null);
-      setTimeRemaining(null);
-    });
-
-    socket.on('session:question', (data) => {
-      setStarted(true);
-      setCurrentQuestion(data.question);
-      setQuestionIndex(data.questionIndex);
-      setTotalQuestions(data.totalQuestions);
-      setAnswerCount({ count: 0, total: 0, answered: [], waiting: [] });
-      if (data.questionStartedAt) setQuestionStartedAt(data.questionStartedAt);
-      if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
-      setWaitingForContinue(false);
-      setCurrentPhase(null);
-      setQuestionStats(null);
-      setRoundWinner(null);
-      setNextQuestion(null);
-    });
-
-    socket.on('session:answer_count', (data) => {
-      setAnswerCount({ count: data.count, total: data.total, answered: data.answered || [], waiting: data.waiting || [] });
-    });
-
-    socket.on('session:scores', (data) => {
-      setScores(data.scores);
-      setCurrentPhase('scoreboard');
-    });
-
-    socket.on('session:waiting_for_continue', (data) => {
-      setWaitingForContinue(true);
-      setCurrentPhase(null);
-      if (data.nextQuestion) setNextQuestion(data.nextQuestion);
-      if (data.questionStats) {
-        setQuestionStats(data.questionStats);
-      }
-    });
-
-    socket.on('session:correct_answer', (data) => {
-      setCurrentPhase('correct_answer');
-      setQuestionStartedAt(null); // Stop the countdown timer
-      // Set stats immediately when correct answer is shown
-      if (data.question && data.correctAnswers !== undefined) {
-        setQuestionStats({
-          question: data.question,
-          correctAnswers: data.correctAnswers,
-          correctCount: data.correctCount,
-          totalCount: data.totalCount
-        });
-      }
-    });
-
-    socket.on('session:round_result', (data) => {
-      setCurrentPhase('round_result');
-      setRoundWinner(data.winner || null);
-    });
-
-    socket.on('session:finished', (data) => {
-      setFinished(true);
-      setScores(data.results);
-    });
-
-    socket.on('session:reset', () => {
-      // Another admin tab triggered reset — sync local state
-      setFinished(false);
-      setStarted(false);
-      setParticipants([]);
-      setScores([]);
-      setCurrentQuestion(null);
-      setQuestionIndex(0);
-      setCurrentPhase(null);
-      setWaitingForContinue(false);
-      setRoundWinner(null);
-      setQuestionStats(null);
-      setTimeRemaining(null);
-      setQuestionStartedAt(null);
-      setAnswerCount({ count: 0, total: 0, answered: [], waiting: [] });
-      // Fetch new join code
-      fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
-        if (data.joinCode) setJoinCodeDisplay(data.joinCode);
-      });
-    });
-
-    socket.on('session:state', (data) => {
-      setScores(data.scores || []);
-      
-      // Restore phase state
-      if (data.currentPhase) {
-        setCurrentPhase(data.currentPhase);
-      }
-      
-      if (data.status === 'active') {
-        setStarted(true);
-        if (data.question) {
-          setCurrentQuestion(data.question);
-        }
-        setQuestionIndex(data.questionIndex);
-        setTotalQuestions(data.totalQuestions);
-      }
-      if (data.status === 'finished') setFinished(true);
-    });
-
-    return () => {
-      socket.off('session:participant_joined');
-      socket.off('session:started');
-      socket.off('session:get_ready');
-      socket.off('session:question');
-      socket.off('session:answer_count');
-      socket.off('session:scores');
-      socket.off('session:finished');
-      socket.off('session:reset');
-      socket.off('session:state');
-      socket.off('session:waiting_for_continue');
-      socket.off('session:correct_answer');
-      socket.off('session:round_result');
-      socket.off('session:scores');
-      socket.off('disconnect');
-      socket.disconnect();
-    };
-  }, [sessionId, adminToken]);
-
-  // Timer effect for question phase (only when timed)
-  useEffect(() => {
-    if (started && !finished && questionStartedAt && answerTimeSeconds && currentQuestion) {
-      const interval = setInterval(() => {
-        const now = Date.now();
-        const startTime = questionStartedAt * 1000;
-        const elapsed = (now - startTime) / 1000;
-        const remaining = Math.max(0, answerTimeSeconds - elapsed);
-        
-        setTimeRemaining(remaining);
-        
-        if (remaining <= 0) {
-          clearInterval(interval);
-        }
-      }, 100);
-      
-      return () => clearInterval(interval);
-    } else {
-      setTimeRemaining(null);
+  // Single hydration path from /current or session:state.
+  const applyState = useCallback((data) => {
+    if (!data || data.error) return;
+    setState(data);
+    setScores(data.scores || []);
+    setTotalQuestions(data.totalQuestions || 0);
+    if (data.participants) setParticipants(data.participants);
+    setAnswerTimeSeconds(data.answerTimeSeconds || null);
+    setSessionName(data.sessionName || '');
+    if (data.joinCode) setJoinCodeDisplay(data.joinCode);
+    if (data.status === 'waiting') {
+      setStarted(false); setFinished(false); setCurrentPhase(null); setWaitingForContinue(false);
+      setCurrentQuestion(null); setQuestionIndex(0); setQuestionStats(null); setRoundWinner(null);
+      setNextQuestion(null); setQuestionStartedAt(null); setAnswerCount(noResults);
+      return;
     }
-  }, [started, finished, questionStartedAt, answerTimeSeconds, currentQuestion]);
+    if (data.status === 'finished') {
+      setStarted(true); setFinished(true);
+      if (data.questions) setQuestions(data.questions);
+      return;
+    }
+    setStarted(true); setFinished(false);
+    setQuestionIndex(data.questionIndex);
+    setCurrentQuestion(data.question);
+    setQuestionStartedAt(data.questionStartedAt || null);
+    setAnswerCount(data.answerCount || noResults);
+    setRoundWinner(data.roundWinner || null);
+    setQuestionStats(data.questionStats || null);
+    setNextQuestion(data.nextQuestion || null);
+    const phase = data.currentPhase;
+    setWaitingForContinue(phase === 'waiting_for_continue');
+    setCurrentPhase(phase === 'question' || phase === 'waiting_for_continue' ? null : phase);
+  }, []);
+
+  const reload = useCallback(() => {
+    fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(applyState).catch(() => {});
+  }, [sessionId, applyState]);
+
+  useSessionSocket({
+    enabled: !!adminToken,
+    deps: [sessionId, adminToken],
+    join: () => { setConnected(true); socket.emit('host:session', { sessionId, adminToken }); },
+    handlers: {
+      'disconnect': () => setConnected(false),
+      'session:state': applyState,
+      'session:participant_joined': (p) => setParticipants(prev => [...prev, p]),
+      'session:get_ready': (d) => {
+        setStarted(true); setTotalQuestions(d.totalQuestions); setQuestionIndex(d.nextQuestionIndex);
+        setWaitingForContinue(false); setCurrentPhase('get_ready');
+        setQuestionStats(null); setRoundWinner(null); setNextQuestion(null); setQuestionStartedAt(null);
+      },
+      'session:question': (d) => {
+        setStarted(true); setCurrentQuestion(d.question); setQuestionIndex(d.questionIndex); setTotalQuestions(d.totalQuestions);
+        setAnswerCount(noResults); setQuestionStartedAt(d.questionStartedAt || null);
+        if (d.answerTimeSeconds !== undefined) setAnswerTimeSeconds(d.answerTimeSeconds);
+        setWaitingForContinue(false); setCurrentPhase(null); setQuestionStats(null); setRoundWinner(null); setNextQuestion(null);
+      },
+      'session:answer_count': (d) => setAnswerCount({ count: d.count, total: d.total, answered: d.answered || [], waiting: d.waiting || [] }),
+      'session:correct_answer': (d) => {
+        setCurrentPhase('correct_answer'); setQuestionStartedAt(null);
+        setQuestionStats({ question: d.question, correctAnswers: d.correctAnswers, correctCount: d.correctCount, totalCount: d.totalCount });
+      },
+      'session:round_result': (d) => { setCurrentPhase('round_result'); setRoundWinner(d.winner || null); },
+      'session:scores': (d) => { setScores(d.scores); setCurrentPhase('scoreboard'); if (d.roundWinner) setRoundWinner(d.roundWinner); },
+      'session:waiting_for_continue': (d) => {
+        setWaitingForContinue(true); setCurrentPhase(null);
+        setNextQuestion(d.nextQuestion || null); if (d.questionStats) setQuestionStats(d.questionStats);
+      },
+      'session:finished': (d) => { setFinished(true); setScores(d.results); reload(); },
+      'session:reset': reload
+    }
+  });
+
+  useEffect(() => { reload(); }, [reload]);
 
   const startQuiz = async () => {
     await fetch(`/api/session/${sessionId}/start`, {
@@ -306,12 +151,7 @@ export default function HostView() {
         method: 'POST',
         headers: { 'X-Admin-Token': adminToken }
       });
-      if (!res.ok) {
-        // Re-sync state from server
-        const data = await fetch(`/api/session/${sessionId}/current`).then(r => r.json());
-        if (data.currentPhase) setCurrentPhase(data.currentPhase);
-        if (data.currentPhase !== 'waiting_for_continue') setWaitingForContinue(false);
-      }
+      if (!res.ok) reload();
     } catch (e) {
       console.error('Continue failed:', e);
     } finally {
@@ -336,7 +176,6 @@ export default function HostView() {
   };
 
   const joinUrl = typeof window !== 'undefined' ? `${window.location.origin}/join` : '';
-  const [joinCodeDisplay, setJoinCodeDisplay] = useState('');
 
   const resetSession = async () => {
     if (!confirm('Reset this session? All players will be removed and a new join code will be generated.')) return;
@@ -345,34 +184,21 @@ export default function HostView() {
         method: 'POST',
         headers: { 'X-Admin-Token': adminToken }
       });
-      if (res.ok) {
-        const data = await res.json();
-        // Reset all local state
-        setFinished(false);
-        setStarted(false);
-        setParticipants([]);
-        setScores([]);
-        setCurrentQuestion(null);
-        setQuestionIndex(0);
-        setCurrentPhase(null);
-        setWaitingForContinue(false);
-        setRoundWinner(null);
-        setQuestionStats(null);
-        setTimeRemaining(null);
-        setQuestionStartedAt(null);
-        setAnswerCount({ count: 0, total: 0, answered: [], waiting: [] });
-        if (data.joinCode) setJoinCodeDisplay(data.joinCode);
-      }
+      if (res.ok) reload();
     } catch (e) {
       console.error('Reset failed:', e);
     }
   };
 
-  useEffect(() => {
-    fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
-      if (data.joinCode) setJoinCodeDisplay(data.joinCode);
-    });
-  }, [sessionId]);
+  if (!adminToken) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-6 text-center">
+        <h1 className="text-2xl font-bold mb-2">No admin token for this session</h1>
+        <p className="text-gray-400">Open the host view from the quiz page in the admin dashboard.</p>
+        <a href="/admin" onClick={(e) => { e.preventDefault(); navigate('/admin'); }} className="mt-6 text-accent hover:underline">Go to dashboard</a>
+      </div>
+    );
+  }
 
   if (finished) {
     return (
@@ -451,7 +277,7 @@ export default function HostView() {
             🏠 Dashboard
           </a>
           <a 
-            href={`/display/${sessionId}?token=${adminToken}`}
+            href={`/display/${sessionId}`}
             target="_blank"
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-semibold transition flex items-center gap-2"
           >
@@ -517,7 +343,7 @@ export default function HostView() {
               🏠 Dashboard
             </a>
             <a 
-              href={`/display/${sessionId}?token=${adminToken}`}
+              href={`/display/${sessionId}`}
               target="_blank"
               className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
             >
@@ -597,7 +423,7 @@ export default function HostView() {
             🏠 Dashboard
           </a>
           <a 
-            href={`/display/${sessionId}?token=${adminToken}`}
+            href={`/display/${sessionId}`}
             target="_blank"
             className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
           >

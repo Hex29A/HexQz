@@ -262,6 +262,41 @@ test('#28: removed routes answer 404', async () => {
   assert.equal(next.status, 404);
 });
 
+test('#21: an active session survives a server restart', async () => {
+  const token = await createQuiz();
+  await addSingleChoice(token);
+  await addSingleChoice(token);
+  const s = await createSession(token, { useTimers: true, answerTimeSeconds: 5 });
+  const p = await register(s.joinCode, 'Resa');
+  await start(s.sessionId, token);
+  // late/closed answers are rejected once the phase moves on (engine phase check)
+  const before = (await c.get(`/session/${s.sessionId}/current`)).body;
+  assert.equal(before.currentPhase, 'question');
+  assert.deepEqual(before.answerCount, { count: 0, total: 1, answered: [], waiting: ['Resa'] });
+
+  // kill the server mid-question and start a new one on the same database
+  await server.stop();
+  db.close();
+  server = await startServer({ dbPath: server.dbPath });
+  c = api(server.base);
+  db = new Database(server.dbPath, { readonly: true });
+
+  // the 5 s answer timer was re-armed from question_started_at: the question closes by itself
+  const closed = await waitFor(c, s.sessionId, st => st.currentPhase !== 'question', 8000);
+  assert.ok(['correct_answer', 'round_result', 'scoreboard', 'waiting_for_continue'].includes(closed.currentPhase), closed.currentPhase);
+  assert.ok(closed.questionStats, 'full state after reload includes stats');
+  const late = await answer(p, closed.question.id, { answerId: closed.answers[0].id });
+  assert.equal(late.status, 410, 'answers after close are rejected');
+  // host can carry on
+  await waitFor(c, s.sessionId, st => st.currentPhase === 'waiting_for_continue', 25000);
+  const cont = await c.post(`/session/${s.sessionId}/continue`, {}, { 'x-admin-token': token });
+  assert.equal(cont.status, 200);
+  const ready = (await c.get(`/session/${s.sessionId}/current`)).body;
+  assert.equal(ready.currentPhase, 'get_ready');
+  assert.equal(ready.question, null, 'upcoming question hidden during get_ready');
+  assert.equal(ready.questionIndex, 1);
+});
+
 test('#18: migration rebuilds tables with ON DELETE rules', () => {
   const fks = db.pragma('foreign_key_list(response)');
   const q = fks.find(f => f.table === 'question');

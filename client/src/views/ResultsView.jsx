@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import Scoreboard from '../components/Scoreboard.jsx';
 import { applyTheme } from '../theme.js';
+import { getAdminToken } from '../lib/adminToken.js';
 
 export default function ResultsView() {
   const { sessionId } = useParams();
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const adminToken = searchParams.get('token');
+  const [adminToken] = useState(() => getAdminToken(sessionId));
   const [results, setResults] = useState(null);
-  const participantId = localStorage.getItem(`participant:${sessionId}`);
 
   useEffect(() => {
     fetch(`/api/session/${sessionId}/results`).then(r => r.json()).then(data => {

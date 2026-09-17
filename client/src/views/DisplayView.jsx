@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import socket from '../socket.js';
+import useSessionSocket, { socket } from '../hooks/useSessionSocket.js';
+import { useCountdown, useGetReadyCountdown } from '../hooks/useCountdown.js';
+import { viewPhase } from '../lib/phase.js';
 import Scoreboard from '../components/Scoreboard.jsx';
 
 function MiniQR({ joinCode }) {
@@ -20,11 +22,10 @@ function MiniQR({ joinCode }) {
   );
 }
 
-// Display mode for showing on a screen/projector during quiz
+// Display mode for showing on a screen/projector during quiz. Read-only:
+// it needs no admin token (issue #5) and hydrates from session:state.
 export default function DisplayView() {
   const { sessionId } = useParams();
-  const [searchParams] = useSearchParams();
-  const adminToken = searchParams.get('token');
 
   const [phase, setPhase] = useState('waiting');
   const [question, setQuestion] = useState(null);
@@ -32,225 +33,73 @@ export default function DisplayView() {
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [scores, setScores] = useState([]);
   const [joinCode, setJoinCode] = useState('');
-  const [timeRemaining, setTimeRemaining] = useState(null);
   const [answerTimeSeconds, setAnswerTimeSeconds] = useState(null);
   const [questionStartedAt, setQuestionStartedAt] = useState(null);
+  const [getReadyStartedAt, setGetReadyStartedAt] = useState(null);
   const [answerCount, setAnswerCount] = useState({ count: 0, total: 0 });
   const [winner, setWinner] = useState(null);
   const [roundWinner, setRoundWinner] = useState(null);
   const [questionWinner, setQuestionWinner] = useState(null);
-  const [getReadyCountdown, setGetReadyCountdown] = useState(null);
   const [sessionName, setSessionName] = useState('');
   const [correctAnswers, setCorrectAnswers] = useState([]);
   const [correctAnswerQuestion, setCorrectAnswerQuestion] = useState(null);
   const [answers, setAnswers] = useState([]);
 
-  useEffect(() => {
-    // Load initial state
-    fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
-      setJoinCode(data.joinCode || '');
-      setScores(data.scores || []);
-      if (data.sessionName) setSessionName(data.sessionName);
-      
-      // Set timer settings from quiz configuration
-      if (data.answerTimeSeconds !== undefined) {
-        setAnswerTimeSeconds(data.answerTimeSeconds);
-      }
-      
-      if (data.status === 'waiting') {
-        setPhase('waiting');
-      } else if (data.status === 'active') {
-        if (data.question) {
-          setQuestion(data.question);
-          setQuestionIndex(data.questionIndex);
-          setTotalQuestions(data.totalQuestions);
-          setAnswers(data.answers || []);
-          
-          if (data.questionStartedAt) {
-            setQuestionStartedAt(data.questionStartedAt);
-          }
-        }
+  const timeRemaining = useCountdown(questionStartedAt, answerTimeSeconds, phase === 'question');
+  const getReadyCountdown = useGetReadyCountdown(getReadyStartedAt, 5, phase === 'getReady');
 
-        // Restore phase-specific data
-        if (data.roundWinner) setRoundWinner(data.roundWinner);
-        if (data.correctAnswers) {
-          setCorrectAnswers(data.correctAnswers);
-          setCorrectAnswerQuestion(data.question);
-        }
-
-        // Restore phase from server
-        if (data.currentPhase) {
-          const phaseMap = {
-            round_result: 'roundResult',
-            correct_answer: 'correctAnswer',
-            waiting_for_continue: 'scoreboard',
-            get_ready: 'getReady',
-          };
-          setPhase(phaseMap[data.currentPhase] || data.currentPhase);
-        } else if (data.question) {
-          setPhase('question');
-        }
-      } else if (data.status === 'finished') {
-        setPhase('finished');
-        if (data.scores && data.scores.length > 0) {
-          setWinner(data.scores[0]);
-        }
-      }
-    });
-
-    // Socket
-    socket.connect();
-    socket.emit('host:session', { sessionId, adminToken });
-
-    socket.on('session:started', (data) => {
-      setPhase('question');
-      setQuestion(data.question);
+  const applyState = useCallback((data) => {
+    if (!data || data.error) return;
+    setJoinCode(data.joinCode || '');
+    setScores(data.scores || []);
+    setSessionName(data.sessionName || '');
+    setTotalQuestions(data.totalQuestions || 0);
+    if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
+    const view = viewPhase(data);
+    if (view === 'finished' && data.scores?.length) setWinner(data.scores[0]);
+    if (data.status === 'active') {
       setQuestionIndex(data.questionIndex);
-      setTotalQuestions(data.totalQuestions);
+      setQuestion(data.question);
       setAnswers(data.answers || []);
-      
-      if (data.questionStartedAt) {
-        setQuestionStartedAt(data.questionStartedAt);
-      }
-      if (data.answerTimeSeconds !== undefined) {
-        setAnswerTimeSeconds(data.answerTimeSeconds);
-      }
-    });
-
-    socket.on('session:question', (data) => {
-      setPhase('question');
-      setQuestion(data.question);
-      setQuestionIndex(data.questionIndex);
-      setTotalQuestions(data.totalQuestions);
-      setAnswerCount({ count: 0, total: 0 });
-      setRoundWinner(null);
-      setAnswers(data.answers || []); // Clear previous round winner
-      
-      if (data.questionStartedAt) {
-        setQuestionStartedAt(data.questionStartedAt);
-      }
-      if (data.answerTimeSeconds !== undefined) {
-        setAnswerTimeSeconds(data.answerTimeSeconds);
-      }
-    });
-
-    socket.on('session:round_result', (data) => {
-      setRoundWinner(data.winner);
-      setPhase('roundResult');
-    });
-
-    socket.on('session:correct_answer', (data) => {
-      setCorrectAnswerQuestion(data.question);
-      setCorrectAnswers(data.correctAnswers || []);
-      setPhase('correctAnswer');
-    });
-
-    socket.on('session:scores', (data) => {
-      setScores(data.scores || []);
+      setQuestionStartedAt(data.questionStartedAt || null);
+      setGetReadyStartedAt(data.getReadyStartedAt || null);
+      if (data.answerCount) setAnswerCount({ count: data.answerCount.count, total: data.answerCount.total });
+      setRoundWinner(data.roundWinner || null);
       setQuestionWinner(data.roundWinner || null);
-      setPhase('scoreboard');
-    });
-
-    socket.on('session:finished', (data) => {
-      setPhase('finished');
-      setScores(data.results || []);
-      if (data.results && data.results.length > 0) {
-        setWinner(data.results[0]);
+      if (data.questionStats) {
+        setCorrectAnswerQuestion(data.questionStats.question);
+        setCorrectAnswers(data.questionStats.correctAnswers || []);
       }
-    });
-
-    socket.on('session:reset', () => {
-      setPhase('waiting');
-      setScores([]);
-      setQuestion(null);
-      setQuestionIndex(0);
-      setAnswerCount({ count: 0, total: 0 });
-    });
-
-    socket.on('session:answer_count', (data) => {
-      setAnswerCount({ count: data.count, total: data.total });
-    });
-
-    socket.on('session:get_ready', (data) => {
-      setPhase('getReady');
-      setGetReadyCountdown(data.countdown || 3);
-    });
-
-    socket.on('session:state', (data) => {
-      setScores(data.scores || []);
-      
-      // Restore phase from server state
-      if (data.currentPhase) {
-        setPhase(data.currentPhase === 'round_result' ? 'roundResult' : 
-                 data.currentPhase === 'correct_answer' ? 'correctAnswer' : 
-                 data.currentPhase);
-      }
-      
-      if (data.status === 'active') {
-        if (data.question) {
-          setQuestion(data.question);
-        }
-        setQuestionIndex(data.questionIndex);
-        setTotalQuestions(data.totalQuestions);
-      } else if (data.status === 'finished') {
-        setPhase('finished');
-        if (data.scores && data.scores.length > 0) {
-          setWinner(data.scores[0]);
-        }
-      }
-    });
-
-    socket.on('connect', () => {
-      socket.emit('host:session', { sessionId, adminToken });
-    });
-
-    return () => {
-      socket.off('session:started');
-      socket.off('session:question');
-      socket.off('session:correct_answer');
-      socket.off('session:round_result');
-      socket.off('session:scores');
-      socket.off('session:finished');
-      socket.off('session:reset');
-      socket.off('session:answer_count');
-      socket.off('session:get_ready');
-      socket.off('session:state');
-      socket.off('connect');
-    };
-  }, [sessionId, adminToken]);
-
-  // Timer effect for question phase
-  useEffect(() => {
-    if (phase === 'question' && questionStartedAt && answerTimeSeconds) {
-      const interval = setInterval(() => {
-        const now = Date.now();
-        const startTime = questionStartedAt * 1000;
-        const elapsed = (now - startTime) / 1000;
-        const remaining = Math.max(0, answerTimeSeconds - elapsed);
-        
-        setTimeRemaining(remaining);
-        
-        if (remaining <= 0) {
-          clearInterval(interval);
-        }
-      }, 100);
-      
-      return () => clearInterval(interval);
-    } else {
-      setTimeRemaining(null);
     }
-  }, [phase, questionStartedAt, answerTimeSeconds]);
+    setPhase(view);
+  }, []);
 
-  // Timer effect for Get Ready countdown
-  useEffect(() => {
-    if (phase === 'getReady' && getReadyCountdown !== null && getReadyCountdown > 0) {
-      const timeout = setTimeout(() => {
-        setGetReadyCountdown(prev => Math.max(0, prev - 1));
-      }, 1000);
-      
-      return () => clearTimeout(timeout);
+  useSessionSocket({
+    deps: [sessionId],
+    join: () => socket.emit('rejoin:session', { sessionId }),
+    handlers: {
+      'session:state': applyState,
+      'session:get_ready': (d) => { setGetReadyStartedAt(d.getReadyStartedAt); setQuestionIndex(d.nextQuestionIndex); setTotalQuestions(d.totalQuestions); setPhase('getReady'); },
+      'session:question': (d) => {
+        setQuestion(d.question); setQuestionIndex(d.questionIndex); setTotalQuestions(d.totalQuestions);
+        setAnswers(d.answers || []); setAnswerCount({ count: 0, total: 0 }); setRoundWinner(null);
+        setQuestionStartedAt(d.questionStartedAt || null);
+        if (d.answerTimeSeconds !== undefined) setAnswerTimeSeconds(d.answerTimeSeconds);
+        setPhase('question');
+      },
+      'session:answer_count': (d) => setAnswerCount({ count: d.count, total: d.total }),
+      'session:correct_answer': (d) => { setCorrectAnswerQuestion(d.question); setCorrectAnswers(d.correctAnswers || []); setPhase('correctAnswer'); },
+      'session:round_result': (d) => { setRoundWinner(d.winner); setPhase('roundResult'); },
+      'session:scores': (d) => { setScores(d.scores || []); setQuestionWinner(d.roundWinner || null); setPhase('scoreboard'); },
+      'session:waiting_for_continue': () => setPhase('scoreboard'),
+      'session:finished': (d) => { setPhase('finished'); setScores(d.results || []); if (d.results?.length) setWinner(d.results[0]); },
+      'session:reset': () => { setPhase('waiting'); setScores([]); setQuestion(null); setQuestionIndex(0); setAnswerCount({ count: 0, total: 0 }); }
     }
-  }, [phase, getReadyCountdown]);
+  });
+
+  useEffect(() => {
+    fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(applyState).catch(() => {});
+  }, [sessionId, applyState]);
 
   const timerPercentage = timeRemaining !== null && answerTimeSeconds > 0 
     ? (timeRemaining / answerTimeSeconds) * 100 
@@ -266,7 +115,7 @@ export default function DisplayView() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-gradient-to-br from-bg via-bg-secondary to-bg">
         <a 
-          href={`/host/${sessionId}?token=${adminToken}`}
+          href={`/host/${sessionId}`}
           className="absolute top-4 right-4 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-semibold transition border border-gray-700"
         >
           🎮 Host Controls
@@ -310,7 +159,7 @@ export default function DisplayView() {
       <div className="flex flex-col min-h-screen p-8 bg-gradient-to-br from-bg via-bg-secondary to-bg">
         <MiniQR joinCode={joinCode} />
         <a 
-          href={`/host/${sessionId}?token=${adminToken}`}
+          href={`/host/${sessionId}`}
           className="absolute top-4 right-4 px-3 py-1.5 bg-gray-800/80 hover:bg-gray-700 rounded-lg text-xs font-semibold transition border border-gray-700 opacity-50 hover:opacity-100"
         >
           🎮 Host

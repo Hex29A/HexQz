@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import socket from '../socket.js';
+import useSessionSocket, { socket } from '../hooks/useSessionSocket.js';
+import { useCountdown, useGetReadyCountdown } from '../hooks/useCountdown.js';
+import { viewPhase } from '../lib/phase.js';
 import { applyTheme } from '../theme.js';
 import Scoreboard from '../components/Scoreboard.jsx';
 
@@ -47,98 +49,81 @@ export default function GameView() {
   const [error, setError] = useState('');
   const [liveCount, setLiveCount] = useState({ count: 0, total: 0 });
   const [scores, setScores] = useState([]);
-  const [timeRemaining, setTimeRemaining] = useState(null);
   const [answerTimeSeconds, setAnswerTimeSeconds] = useState(null);
   const [questionStartedAt, setQuestionStartedAt] = useState(null);
+  const [getReadyStartedAt, setGetReadyStartedAt] = useState(null);
   const [roundWinner, setRoundWinner] = useState(null);
   const [questionWinner, setQuestionWinner] = useState(null);
-  const [getReadyCountdown, setGetReadyCountdown] = useState(null);
-  const [correctAnswers, setCorrectAnswers] = useState([]);
-  const [correctAnswerQuestion, setCorrectAnswerQuestion] = useState(null);
-  const questionIndexRef = useRef(0);
-  const pollTimer = useRef(null);
-  const timerInterval = useRef(null);
+  const questionIdRef = useRef(null);
 
+  const timeRemaining = useCountdown(questionStartedAt, answerTimeSeconds, phase === 'question');
+  const getReadyCountdown = useGetReadyCountdown(getReadyStartedAt, 5, phase === 'getReady');
+
+  // A question arrived (socket event or state). Only a *new* question clears
+  // the player's in-progress answer.
+  const showQuestion = useCallback((data) => {
+    const fresh = data.question?.id !== questionIdRef.current;
+    questionIdRef.current = data.question?.id || null;
+    setQuestion(data.question); setAnswers(data.answers || []);
+    setQuestionIndex(data.questionIndex); setTotalQuestions(data.totalQuestions);
+    if (fresh) { setSubmitted(false); setSelectedAnswer(null); setTextAnswer(''); setMultiPartAnswers({}); setError(''); }
+    setLiveCount(data.answerCount ? { count: data.answerCount.count, total: data.answerCount.total } : { count: 0, total: 0 });
+    setQuestionStartedAt(data.questionStartedAt || null);
+    if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
+    setRoundWinner(null);
+    setPhase('question');
+  }, []);
+
+  // Full state from /current or session:state — the single hydration path.
   const applyState = useCallback((data) => {
+    if (!data || data.error) return;
     if (data.themeColor) applyTheme(data.themeColor, data.lightMode);
     if (data.status === 'finished') { navigate(`/results/${sessionId}`); return; }
     if (data.status === 'waiting') { navigate(`/lobby/${sessionId}`); return; }
-    if (data.currentPhase === 'get_ready') { setPhase('getReady'); setGetReadyCountdown(5); if (data.totalQuestions) setTotalQuestions(data.totalQuestions); return; }
-    if (data.questionIndex !== undefined && data.questionIndex > questionIndexRef.current) {
-      setQuestion(data.question); setAnswers(data.answers || []); setQuestionIndex(data.questionIndex);
-      setTotalQuestions(data.totalQuestions); setSubmitted(false); setSelectedAnswer(null); setTextAnswer('');
-      setMultiPartAnswers({}); setError(''); setLiveCount({ count: 0, total: 0 }); setPhase('question');
-      questionIndexRef.current = data.questionIndex;
-      if (data.questionStartedAt) setQuestionStartedAt(data.questionStartedAt);
-      if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
-    } else if (data.question && questionIndexRef.current === 0 && !question) {
-      setQuestion(data.question); setAnswers(data.answers || []); setQuestionIndex(data.questionIndex);
-      setTotalQuestions(data.totalQuestions); setPhase('question'); questionIndexRef.current = data.questionIndex;
-      if (data.questionStartedAt) setQuestionStartedAt(data.questionStartedAt);
-      if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
+    setTotalQuestions(data.totalQuestions); setScores(data.scores || []);
+    if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
+    const view = viewPhase(data);
+    if (view === 'getReady') {
+      setGetReadyStartedAt(data.getReadyStartedAt || Math.floor(Date.now() / 1000));
+      setQuestionIndex(data.questionIndex); setPhase('getReady'); return;
     }
-  }, [navigate, sessionId, question]);
+    if (view === 'question') { showQuestion(data); return; }
+    setQuestion(data.question); setQuestionIndex(data.questionIndex);
+    setRoundWinner(data.roundWinner || null); setQuestionWinner(data.roundWinner || null);
+    setPhase(view);
+  }, [navigate, sessionId, showQuestion]);
 
-  useEffect(() => {
-    if (phase === 'question' && questionStartedAt && answerTimeSeconds) {
-      if (timerInterval.current) clearInterval(timerInterval.current);
-      timerInterval.current = setInterval(() => {
-        const elapsed = (Date.now() - questionStartedAt * 1000) / 1000;
-        const remaining = Math.max(0, answerTimeSeconds - elapsed);
-        setTimeRemaining(remaining);
-        if (remaining <= 0) clearInterval(timerInterval.current);
-      }, 100);
-      return () => { if (timerInterval.current) clearInterval(timerInterval.current); };
-    } else {
-      setTimeRemaining(null);
-      if (timerInterval.current) clearInterval(timerInterval.current);
+  useEffect(() => { if (!participantId || !participantSecret) navigate('/join'); }, [participantId, participantSecret, navigate]);
+
+  useSessionSocket({
+    enabled: !!(participantId && participantSecret),
+    deps: [sessionId],
+    join: () => socket.emit('join:session', { sessionId, participantId, participantSecret }),
+    handlers: {
+      'session:state': applyState,
+      'session:get_ready': (d) => { setGetReadyStartedAt(d.getReadyStartedAt); setQuestionIndex(d.nextQuestionIndex); setTotalQuestions(d.totalQuestions); setPhase('getReady'); },
+      'session:question': showQuestion,
+      'session:answer_count': (d) => setLiveCount({ count: d.count, total: d.total }),
+      'session:correct_answer': () => setPhase('correctAnswer'),
+      'session:round_result': (d) => { setRoundWinner(d.winner); setPhase('roundResult'); },
+      'session:scores': (d) => { setScores(d.scores || []); setQuestionWinner(d.roundWinner || null); setPhase('scoreboard'); },
+      'session:waiting_for_continue': () => setPhase('scoreboard'),
+      'session:finished': () => navigate(`/results/${sessionId}`),
+      'session:reset': () => {
+        localStorage.removeItem(`participant:${sessionId}`);
+        localStorage.removeItem(`participantSecret:${sessionId}`);
+        navigate('/join');
+      }
     }
-  }, [phase, questionStartedAt, answerTimeSeconds]);
+  });
 
+  // Fallback poll in case a socket event was missed
   useEffect(() => {
-    if (!participantId || !participantSecret) { navigate('/join'); return; }
-    socket.connect();
-    socket.emit('join:session', { sessionId, participantId, participantSecret });
-    socket.on('connect', () => socket.emit('rejoin:session', { sessionId, participantId, participantSecret }));
-    socket.on('session:question', (data) => {
-      setQuestion(data.question); setAnswers(data.answers || []); setQuestionIndex(data.questionIndex);
-      setTotalQuestions(data.totalQuestions); setSubmitted(false); setSelectedAnswer(null); setTextAnswer('');
-      setMultiPartAnswers({}); setError(''); setLiveCount({ count: 0, total: 0 }); setPhase('question');
-      questionIndexRef.current = data.questionIndex;
-      if (data.questionStartedAt) setQuestionStartedAt(data.questionStartedAt);
-      if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
-    });
-    socket.on('session:started', (data) => {
-      setQuestion(data.question); setAnswers(data.answers || []); setQuestionIndex(data.questionIndex);
-      setTotalQuestions(data.totalQuestions); setPhase('question'); questionIndexRef.current = data.questionIndex;
-      if (data.questionStartedAt) setQuestionStartedAt(data.questionStartedAt);
-      if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
-    });
-    socket.on('session:scores', (data) => { setScores(data.scores || []); setQuestionWinner(data.roundWinner || null); setPhase('scoreboard'); });
-    socket.on('session:round_result', (data) => { setRoundWinner(data.winner); setPhase('roundResult'); });
-    socket.on('session:correct_answer', (data) => { setCorrectAnswerQuestion(data.question); setCorrectAnswers(data.correctAnswers || []); setPhase('correctAnswer'); });
-    socket.on('session:get_ready', (data) => { setPhase('getReady'); setGetReadyCountdown(data.countdown || 5); });
-    socket.on('session:state', applyState);
-    socket.on('session:finished', () => navigate(`/results/${sessionId}`));
-    socket.on('session:reset', () => { localStorage.removeItem(`participant:${sessionId}`); navigate('/join'); });
-    socket.on('session:answer_count', (data) => setLiveCount({ count: data.count, total: data.total }));
-    fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(applyState);
-    pollTimer.current = setInterval(() => fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(applyState).catch(() => {}), POLL_INTERVAL);
-    return () => {
-      socket.off('session:question'); socket.off('session:started'); socket.off('session:state');
-      socket.off('session:finished'); socket.off('session:reset'); socket.off('session:answer_count');
-      socket.off('session:scores'); socket.off('session:correct_answer'); socket.off('session:round_result');
-      socket.off('session:get_ready'); clearInterval(pollTimer.current);
-      if (timerInterval.current) clearInterval(timerInterval.current);
-    };
-  }, [sessionId, participantId, navigate, applyState]);
-
-  useEffect(() => {
-    if (phase === 'getReady' && getReadyCountdown !== null && getReadyCountdown > 0) {
-      const timeout = setTimeout(() => setGetReadyCountdown(prev => Math.max(0, prev - 1)), 1000);
-      return () => clearTimeout(timeout);
-    }
-  }, [phase, getReadyCountdown]);
+    const load = () => fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(applyState).catch(() => {});
+    load();
+    const timer = setInterval(load, POLL_INTERVAL);
+    return () => clearInterval(timer);
+  }, [sessionId, applyState]);
 
   const submitAnswer = async () => {
     const body = { participantId, participantSecret, questionId: question.id };
@@ -291,9 +276,9 @@ export default function GameView() {
             )}
             {error && <p className="text-red-400 text-sm text-center mt-2 cursor-pointer" onClick={() => setError('')}>{error}</p>}
             <button onClick={submitAnswer}
-              disabled={(timeRemaining !== null && timeRemaining <= 0) || (isChoiceType ? !selectedAnswer : isMultiPart ? !Object.values(multiPartAnswers).some(v => v.trim()) : !textAnswer.trim())}
+              disabled={phase !== 'question' || (timeRemaining !== null && timeRemaining <= 0) || (isChoiceType ? !selectedAnswer : isMultiPart ? !Object.values(multiPartAnswers).some(v => v.trim()) : !textAnswer.trim())}
               className="w-full mt-4 py-4 bg-accent hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-semibold text-lg transition">
-              {timeRemaining !== null && timeRemaining <= 0 ? "Time's Up!" : 'Submit'}
+              {phase !== 'question' ? 'Question closed' : timeRemaining !== null && timeRemaining <= 0 ? "Time's Up!" : 'Submit'}
             </button>
           </>
         )}

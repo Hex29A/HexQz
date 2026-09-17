@@ -10,9 +10,9 @@ export const ADMIN_SECRET = 'test-secret';
 
 // Starts a fresh server on a random port with an empty database.
 // Returns { base, dbPath, stop }.
-export async function startServer() {
+export async function startServer({ dbPath: existingDb } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'hexqz-test-'));
-  const dbPath = join(dir, 'test.sqlite');
+  const dbPath = existingDb || join(dir, 'test.sqlite');
   const port = 20000 + Math.floor(Math.random() * 20000);
   const child = spawn(process.execPath, ['index.js'], {
     cwd: serverDir,

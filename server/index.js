@@ -11,6 +11,7 @@ import sessionRoutes from './routes/session.js';
 import joinRoutes from './routes/join.js';
 import registerSocketHandlers from './socket/handlers.js';
 import { validationErrorHandler } from './validate.js';
+import { attachIo, resumeActiveSessions } from './engine.js';
 
 import seedDemoQuiz from './seed.js';
 
@@ -27,6 +28,7 @@ const io = new Server(server, {
   cors: process.env.NODE_ENV === 'development' ? { origin: 'http://localhost:5173', credentials: true } : undefined
 });
 app.set('io', io);
+attachIo(io);
 
 app.set('trust proxy', 1);
 
@@ -83,4 +85,6 @@ registerSocketHandlers(io);
 const PORT = process.env.PORT || 3042;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`hexqz server running on port ${PORT}`);
+  const resumed = resumeActiveSessions();
+  if (resumed) console.log(`[RESUME] ${resumed} active session(s) resumed`);
 });

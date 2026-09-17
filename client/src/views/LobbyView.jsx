@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import socket from '../socket.js';
+import useSessionSocket, { socket } from '../hooks/useSessionSocket.js';
 import { applyTheme } from '../theme.js';
 
 export default function LobbyView() {
@@ -10,56 +10,35 @@ export default function LobbyView() {
   const participantSecret = localStorage.getItem(`participantSecret:${sessionId}`);
   const [participantCount, setParticipantCount] = useState(0);
 
-  useEffect(() => {
-    if (!participantId || !participantSecret) {
-      navigate('/join');
-      return;
+  const applyState = useCallback((data) => {
+    if (!data || data.error) return;
+    if (data.themeColor) applyTheme(data.themeColor, data.lightMode);
+    if (data.status === 'active') navigate(`/game/${sessionId}`);
+    if (data.status === 'finished') navigate(`/results/${sessionId}`);
+    if (data.participants) setParticipantCount(data.participants.length);
+  }, [navigate, sessionId]);
+
+  useEffect(() => { if (!participantId || !participantSecret) navigate('/join'); }, [participantId, participantSecret, navigate]);
+
+  useSessionSocket({
+    enabled: !!(participantId && participantSecret),
+    deps: [sessionId],
+    join: () => socket.emit('join:session', { sessionId, participantId, participantSecret }),
+    handlers: {
+      'session:state': applyState,
+      'session:participant_joined': () => setParticipantCount(prev => prev + 1),
+      'session:get_ready': () => navigate(`/game/${sessionId}`),
+      'session:reset': () => {
+        localStorage.removeItem(`participant:${sessionId}`);
+        localStorage.removeItem(`participantSecret:${sessionId}`);
+        navigate('/join');
+      }
     }
+  });
 
-    socket.connect();
-    socket.emit('join:session', { sessionId, participantId, participantSecret });
-
-    socket.on('connect', () => {
-      socket.emit('rejoin:session', { sessionId, participantId, participantSecret });
-    });
-
-    socket.on('session:participant_joined', () => {
-      setParticipantCount(prev => prev + 1);
-    });
-
-    socket.on('session:get_ready', () => {
-      navigate(`/game/${sessionId}`);
-    });
-
-    socket.on('session:started', () => {
-      navigate(`/game/${sessionId}`);
-    });
-
-    socket.on('session:state', (data) => {
-      if (data.status === 'active') navigate(`/game/${sessionId}`);
-      if (data.status === 'finished') navigate(`/results/${sessionId}`);
-    });
-
-    socket.on('session:reset', () => {
-      localStorage.removeItem(`participant:${sessionId}`);
-      navigate('/join');
-    });
-
-    fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(data => {
-      if (data.themeColor) applyTheme(data.themeColor, data.lightMode);
-      if (data.status === 'active') navigate(`/game/${sessionId}`);
-      if (data.status === 'finished') navigate(`/results/${sessionId}`);
-      if (data.participants) setParticipantCount(data.participants.length);
-    });
-
-    return () => {
-      socket.off('session:participant_joined');
-      socket.off('session:get_ready');
-      socket.off('session:started');
-      socket.off('session:state');
-      socket.off('session:reset');
-    };
-  }, [sessionId, participantId, navigate]);
+  useEffect(() => {
+    fetch(`/api/session/${sessionId}/current`).then(r => r.json()).then(applyState).catch(() => {});
+  }, [sessionId, applyState]);
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-6">
