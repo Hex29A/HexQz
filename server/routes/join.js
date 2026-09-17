@@ -23,28 +23,6 @@ function calculateSpeedPoints(basePoints, responseTimeMs, maxTimeSeconds = 30) {
   return Math.round(basePoints * multiplier);
 }
 
-// Platform status
-router.get('/status', (req, res) => {
-  const sessions = db.prepare(`
-    SELECT s.join_code, s.status, q.title as quiz_title, COUNT(p.id) as participant_count
-    FROM session s
-    JOIN quiz q ON q.id = s.quiz_id
-    LEFT JOIN participant p ON p.session_id = s.id
-    WHERE s.status IN ('waiting', 'active')
-    GROUP BY s.id
-  `).all();
-
-  res.json({
-    active: sessions.length > 0,
-    sessions: sessions.map(s => ({
-      joinCode: s.join_code,
-      quizTitle: s.quiz_title,
-      status: s.status,
-      participantCount: s.participant_count
-    }))
-  });
-});
-
 // Validate join code
 router.get('/join/:joinCode', (req, res) => {
   const joinCode = req.params.joinCode.toUpperCase();
@@ -143,13 +121,9 @@ router.post('/answer', (req, res) => {
     if (responseTimeMs > 999999) responseTimeMs = null; // Over 16 minutes, likely error
   }
 
-  // Check for existing response (allow revision)
-  const existing = db.prepare('SELECT id, points_awarded, response_time_ms FROM response WHERE participant_id = ? AND question_id = ?').get(participantId, questionId);
-
-  // Use the fastest response time if revising
-  if (existing && existing.response_time_ms && responseTimeMs) {
-    responseTimeMs = Math.min(responseTimeMs, existing.response_time_ms);
-  }
+  // Check for existing response (allow revision). A revised answer is scored
+  // on the time of the revision, never on the earlier attempt (issue #9).
+  const existing = db.prepare('SELECT id, points_awarded FROM response WHERE participant_id = ? AND question_id = ?').get(participantId, questionId);
 
   // Validate textAnswer length
   if (textAnswer && textAnswer.length > 100) {
@@ -380,8 +354,14 @@ router.post('/session/:sessionId/override', (req, res) => {
   `).get(responseId);
   if (!response || response.session_id !== session.id) return res.status(404).json({ error: 'Response not found' });
 
+  // Same scale as normal scoring (issue #19): speed-based out of 1000 when the
+  // session is timed, flat 1 point when untimed.
   const oldPoints = response.points_awarded || 0;
-  const newPoints = isCorrect ? 10 : 0;
+  const newPoints = isCorrect
+    ? (session.answer_time_seconds
+        ? calculateSpeedPoints(1000, response.response_time_ms, session.answer_time_seconds)
+        : 1)
+    : 0;
   const pointsDiff = newPoints - oldPoints;
 
   // Update response

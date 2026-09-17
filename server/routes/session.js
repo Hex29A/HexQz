@@ -287,160 +287,6 @@ router.post('/session/:sessionId/start', (req, res) => {
   });
 });
 
-// Advance to next question
-router.post('/session/:sessionId/next', (req, res) => {
-  const adminToken = req.headers['x-admin-token'];
-  if (!adminToken) return res.status(401).json({ error: 'Missing X-Admin-Token header' });
-
-  const session = verifyAdminToken(req.params.sessionId, adminToken);
-  if (!session) return res.status(403).json({ error: 'Forbidden' });
-  if (session.status !== 'active') return res.status(400).json({ error: 'Session not active' });
-
-  const questions = db.prepare(`
-    SELECT * FROM question WHERE quiz_id = ? ORDER BY sort_order
-  `).all(session.quiz_id);
-  const quiz = db.prepare('SELECT * FROM quiz WHERE id = ?').get(session.quiz_id);
-
-  const currentIndex = session.current_question_index;
-
-  // Close current question
-  let roundWinner = null;
-  if (currentIndex < questions.length) {
-    const currentQuestion = questions[currentIndex];
-    markQuestionClosed(session.id, currentQuestion.id);
-
-    // Score estimation questions
-    if (currentQuestion.type === 'estimation' && currentQuestion.correct_value !== null) {
-      scoreEstimationQuestion(currentQuestion);
-    }
-
-    // Get round winner (fastest correct answer)
-    roundWinner = getRoundWinner(currentQuestion.id, session.id);
-    console.log(`[MANUAL] Question ${currentIndex + 1} (ID: ${currentQuestion.id}): Round winner =`, roundWinner ? `${roundWinner.name} (${roundWinner.timeMs}ms, ${roundWinner.points}pts)` : 'NONE');
-    
-    // Get correct answers for reveal
-    const correctAnswers = db.prepare('SELECT * FROM answer WHERE question_id = ? AND is_correct = 1').all(currentQuestion.id);
-    
-    // Get response statistics
-    const correctResponses = db.prepare(`
-      SELECT COUNT(*) as count FROM response r
-      JOIN participant p ON p.id = r.participant_id
-      WHERE r.question_id = ? AND p.session_id = ? AND r.is_correct = 1
-    `).get(currentQuestion.id, session.id);
-    
-    const totalResponses = db.prepare(`
-      SELECT COUNT(*) as count FROM response r
-      JOIN participant p ON p.id = r.participant_id
-      WHERE r.question_id = ? AND p.session_id = ?
-    `).get(currentQuestion.id, session.id);
-    
-    // Show correct answer reveal for 5 seconds
-    db.prepare('UPDATE session SET current_phase = ? WHERE id = ?').run('correct_answer', session.id);
-    io.to(`session:${session.id}`).emit('session:correct_answer', {
-      question: {
-        id: currentQuestion.id,
-        text: currentQuestion.text,
-        type: currentQuestion.type,
-        correctValue: currentQuestion.correct_value
-      },
-      correctAnswers: correctAnswers.map(a => ({
-        id: a.id,
-        text: a.text,
-        partLabel: a.part_label
-      })),
-      correctCount: correctResponses?.count || 0,
-      totalCount: totalResponses?.count || 0,
-      displayDuration: 5
-    });
-  }
-
-  const io = req.app.get('io');
-  const scoreboardPauseSeconds = quiz.scoreboard_pause_seconds || 10;
-  
-  // After 5 seconds, show round result (fastest player) if there is one
-  setTimeout(() => {
-    if (roundWinner) {
-      db.prepare('UPDATE session SET current_phase = ? WHERE id = ?').run('round_result', session.id);
-      io.to(`session:${session.id}`).emit('session:round_result', { 
-        winner: roundWinner,
-        displayDuration: 10
-      });
-    }
-
-    // Then show full scoreboard after delay
-    setTimeout(() => {
-      const scores = getSessionScores(session.id);
-      db.prepare('UPDATE session SET current_phase = ? WHERE id = ?').run('scoreboard', session.id);
-      io.to(`session:${session.id}`).emit('session:scores', { 
-        scores, 
-        roundWinner: roundWinner,
-        scoreboardPauseSeconds: scoreboardPauseSeconds,
-        scoreboardStartedAt: Math.floor(Date.now() / 1000)
-      });
-      
-      const nextIndex = currentIndex + 1;
-      
-      // After scoreboard, emit waiting_for_continue with stats
-      if (nextIndex < questions.length) {
-        setTimeout(() => {
-          const currentQuestion = questions[currentIndex];
-          const correctAnswers = db.prepare('SELECT * FROM answer WHERE question_id = ? AND is_correct = 1').all(currentQuestion.id);
-          
-          // Count correct vs total responses
-          const totalResponses = db.prepare(`
-            SELECT COUNT(*) as count FROM response r
-            JOIN participant p ON p.id = r.participant_id
-            WHERE r.question_id = ? AND p.session_id = ?
-          `).get(currentQuestion.id, session.id);
-          
-          const correctResponses = db.prepare(`
-            SELECT COUNT(*) as count FROM response r
-            JOIN participant p ON p.id = r.participant_id
-            WHERE r.question_id = ? AND p.session_id = ? AND r.is_correct = 1
-          `).get(currentQuestion.id, session.id);
-          
-          // Update phase to waiting_for_continue
-          db.prepare('UPDATE session SET current_phase = ? WHERE id = ?').run('waiting_for_continue', session.id);
-          
-          const nextQuestion = questions[nextIndex];
-          io.to(`session:${session.id}`).emit('session:waiting_for_continue', { 
-            nextIndex,
-            nextQuestion: nextQuestion ? { text: nextQuestion.text, type: nextQuestion.type, imageUrl: nextQuestion.image_url } : null,
-            questionStats: {
-              question: {
-                text: currentQuestion.text,
-                type: currentQuestion.type,
-                correctValue: currentQuestion.correct_value
-              },
-              correctAnswers: correctAnswers.map(a => ({
-                text: a.text,
-                partLabel: a.part_label
-              })),
-              correctCount: correctResponses?.count || 0,
-              totalCount: totalResponses?.count || 0
-            }
-          });
-        }, scoreboardPauseSeconds * 1000);
-      } else {
-        // Quiz finished
-        setTimeout(() => {
-          db.prepare('UPDATE session SET status = ?, current_question_index = ?, current_phase = ? WHERE id = ?')
-            .run('finished', nextIndex, 'finished', session.id);
-
-          const finalScores = getSessionScores(session.id);
-          io.to(`session:${session.id}`).emit('session:finished', {
-            results: finalScores,
-            resultsUrl: `/results/${session.id}`
-          });
-          cleanupSession(session.id);
-        }, scoreboardPauseSeconds * 1000);
-      }
-    }, roundWinner ? 10000 : 0);
-  }, 5000); // Wait 5 seconds for correct answer reveal
-
-  res.json({ ok: true });
-});
-
 // Manual continue from scoreboard
 router.post('/session/:sessionId/continue', (req, res) => {
   const adminToken = req.headers['x-admin-token'];
@@ -687,13 +533,16 @@ router.get('/session/:sessionId/current', (req, res) => {
 
   const answers = db.prepare('SELECT * FROM answer WHERE question_id = ?').all(currentQuestion.id);
 
-  // Build phase-specific data for restoring display state on reload
+  // Build phase-specific data for restoring display state on reload.
+  // The correct value/answers are only revealed once the question is closed
+  // (issue #7) — this endpoint is unauthenticated and polled by players.
   let roundWinner = null;
   let correctAnswers = null;
+  const revealed = ['correct_answer', 'scoreboard', 'waiting_for_continue'].includes(session.current_phase);
   if (['round_result', 'correct_answer', 'scoreboard', 'waiting_for_continue'].includes(session.current_phase)) {
     roundWinner = getRoundWinner(currentQuestion.id, session.id);
   }
-  if (['correct_answer', 'scoreboard', 'waiting_for_continue'].includes(session.current_phase)) {
+  if (revealed) {
     const correctAns = db.prepare('SELECT * FROM answer WHERE question_id = ? AND is_correct = 1').all(currentQuestion.id);
     correctAnswers = correctAns.map(a => ({ id: a.id, text: a.text, partLabel: a.part_label || undefined }));
   }
@@ -702,7 +551,13 @@ router.get('/session/:sessionId/current', (req, res) => {
     status: 'active',
     joinCode: session.join_code,
     currentPhase: session.current_phase,
-    question: { id: currentQuestion.id, text: currentQuestion.text, imageUrl: currentQuestion.image_url, type: currentQuestion.type, correctValue: currentQuestion.correct_value },
+    question: {
+      id: currentQuestion.id,
+      text: currentQuestion.text,
+      imageUrl: currentQuestion.image_url,
+      type: currentQuestion.type,
+      correctValue: revealed ? currentQuestion.correct_value : null
+    },
     answers: answers.map(a => ({ id: a.id, text: a.text, partLabel: a.part_label || undefined })),
     questionIndex: session.current_question_index,
     totalQuestions: questions.length,
@@ -872,33 +727,41 @@ function getRoundWinner(questionId, sessionId) {
   };
 }
 
-function scoreEstimationQuestion(question) {
+// Score an estimation question for ONE session: rank responses by proximity to
+// the correct value. Runs in a transaction and is idempotent per session
+// (a question that already has points in this session is not scored again).
+const scoreEstimationQuestion = db.transaction((question, sessionId) => {
   const responses = db.prepare(`
-    SELECT r.*, p.id as pid FROM response r
+    SELECT r.id, r.participant_id, r.text_answer, r.points_awarded FROM response r
     JOIN participant p ON p.id = r.participant_id
-    JOIN session s ON s.id = p.session_id
-    JOIN question q ON q.quiz_id = s.quiz_id
-    WHERE r.question_id = ? AND r.text_answer IS NOT NULL
-  `).all(question.id);
+    WHERE r.question_id = ? AND p.session_id = ? AND r.text_answer IS NOT NULL
+  `).all(question.id, sessionId);
 
   if (responses.length === 0) return;
+  if (responses.some(r => r.points_awarded > 0)) {
+    console.log(`[ESTIMATION] Question ${question.id} already scored for session ${sessionId}, skipping`);
+    return;
+  }
 
   // Rank by proximity
   const ranked = responses
     .map(r => ({ ...r, distance: Math.abs(parseFloat(r.text_answer) - question.correct_value) }))
+    .filter(r => !Number.isNaN(r.distance))
     .sort((a, b) => a.distance - b.distance);
 
-  const basePointsTable = [1000, 800, 600, 500, 400]; // Adjusted for new scoring system
+  const basePointsTable = [1000, 800, 600, 500, 400];
+  const updateResponse = db.prepare('UPDATE response SET is_correct = ?, points_awarded = ? WHERE id = ?');
+  const updateScore = db.prepare('UPDATE participant SET score = score + ? WHERE id = ?');
 
   for (let i = 0; i < ranked.length; i++) {
     const r = ranked[i];
     let points = i < basePointsTable.length ? basePointsTable[i] : 200;
     if (r.distance === 0) points += 200; // exact match bonus
 
-    db.prepare('UPDATE response SET is_correct = ?, points_awarded = ? WHERE id = ?').run(points > 0 ? 1 : 0, points, r.id);
-    db.prepare('UPDATE participant SET score = score + ? WHERE id = ?').run(points, r.participant_id);
+    updateResponse.run(points > 0 ? 1 : 0, points, r.id);
+    updateScore.run(points, r.participant_id);
   }
-}
+});
 
 // Auto-close: schedule automatic close of question and show results (manual mode)
 function scheduleAutoClose(io, sessionId, answerTimeSeconds, scoreboardPauseSeconds) {
@@ -955,7 +818,7 @@ function executeQuestionClose(io, sessionId, scoreboardPauseSeconds) {
     markQuestionClosed(sessionId, currentQuestion.id);
 
     if (currentQuestion.type === 'estimation' && currentQuestion.correct_value !== null) {
-      scoreEstimationQuestion(currentQuestion);
+      scoreEstimationQuestion(currentQuestion, sessionId);
     }
 
     roundWinner = getRoundWinner(currentQuestion.id, sessionId);
@@ -1122,7 +985,7 @@ function scheduleAutoAdvance(io, sessionId, answerTimeSeconds, scoreboardPauseSe
       markQuestionClosed(sessionId, currentQuestion.id);
 
       if (currentQuestion.type === 'estimation' && currentQuestion.correct_value !== null) {
-        scoreEstimationQuestion(currentQuestion);
+        scoreEstimationQuestion(currentQuestion, sessionId);
       }
 
       // Get round winner

@@ -13,6 +13,11 @@ import registerSocketHandlers from './socket/handlers.js';
 
 import './seed.js';
 
+if (process.env.NODE_ENV === 'production' && !process.env.ADMIN_SECRET) {
+  console.error('ADMIN_SECRET is required in production (quiz creation and uploads would be open to anyone)');
+  process.exit(1);
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const server = createServer(app);

@@ -4,6 +4,7 @@ import multer from 'multer';
 import { join, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { mkdirSync } from 'fs';
+import rateLimit from 'express-rate-limit';
 import db from '../db/db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -35,9 +36,33 @@ const upload = multer({
 
 const router = Router();
 
-router.post('/admin/login', (req, res) => {
+// Admin authentication. ADMIN_SECRET is mandatory: without it every admin
+// route answers 503 instead of silently being open (issue #10).
+function hasAdminSecret(req) {
   const secret = process.env.ADMIN_SECRET;
-  if (!secret) return res.status(404).json({ error: 'Dashboard disabled' });
+  if (!secret) return false;
+  return req.cookies.admin_session === secret || req.headers['x-admin-secret'] === secret;
+}
+
+function requireAdmin(req, res, next) {
+  if (!process.env.ADMIN_SECRET) return res.status(503).json({ error: 'ADMIN_SECRET not configured' });
+  if (!hasAdminSecret(req)) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+}
+
+// Brute-force protection on the login form (issue #3). Keyed by client IP;
+// app.set('trust proxy', 1) makes that the real IP behind the reverse proxy.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts, try again later' }
+});
+
+router.post('/admin/login', loginLimiter, (req, res) => {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret) return res.status(503).json({ error: 'ADMIN_SECRET not configured' });
   const { password } = req.body;
   if (!password || password !== secret) return res.status(401).json({ error: 'Invalid password' });
   res.cookie('admin_session', secret, {
@@ -49,10 +74,7 @@ router.post('/admin/login', (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/admin/quizzes', (req, res) => {
-  const secret = process.env.ADMIN_SECRET;
-  if (!secret) return res.status(404).json({ error: 'Dashboard disabled' });
-  if (req.cookies.admin_session !== secret) return res.status(401).json({ error: 'Unauthorized' });
+router.get('/admin/quizzes', requireAdmin, (req, res) => {
   const quizzes = db.prepare(`
     SELECT q.id, q.title, q.admin_token, q.theme_color, q.logo_url, q.created_at, q.archived,
            COUNT(DISTINCT s.id) as session_count
@@ -71,11 +93,7 @@ router.get('/admin/quizzes', (req, res) => {
   }));
 });
 
-router.post('/quiz', (req, res) => {
-  const secret = process.env.ADMIN_SECRET;
-  const hasValidCookie = secret && req.cookies.admin_session === secret;
-  const hasValidHeader = secret && req.headers['x-admin-secret'] === secret;
-  if (secret && !hasValidCookie && !hasValidHeader) return res.status(401).json({ error: 'Unauthorized' });
+router.post('/quiz', requireAdmin, (req, res) => {
   const { title, themeColor, logoUrl } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required' });
   if (title.trim().length > 200) return res.status(400).json({ error: 'Title too long (max 200)' });
@@ -193,11 +211,9 @@ router.delete('/quiz/:adminToken/question/:questionId', (req, res) => {
   res.json({ ok: true });
 });
 
+// Upload always requires either the admin session or a valid quiz admin token.
 router.post('/upload', (req, res) => {
-  const secret = process.env.ADMIN_SECRET;
-  const hasValidCookie = secret && req.cookies.admin_session === secret;
-  const hasValidHeader = secret && req.headers['x-admin-secret'] === secret;
-  if (secret && !hasValidCookie && !hasValidHeader) {
+  if (!hasAdminSecret(req)) {
     const adminToken = req.headers['x-admin-token'];
     const quiz = adminToken ? db.prepare('SELECT id FROM quiz WHERE admin_token = ?').get(adminToken) : null;
     if (!quiz) return res.status(401).json({ error: 'Unauthorized' });
