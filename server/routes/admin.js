@@ -106,6 +106,8 @@ router.post('/admin/logout', (req, res) => {
 });
 
 router.get('/admin/quizzes', requireAdmin, (req, res) => {
+  // One query for the list plus one for "latest session per quiz" (via a
+  // window function), instead of a per-quiz round trip (issue #27).
   const quizzes = db.prepare(`
     SELECT q.id, q.title, q.admin_token, q.theme_color, q.logo_url, q.created_at, q.archived,
            COUNT(DISTINCT s.id) as session_count
@@ -114,8 +116,18 @@ router.get('/admin/quizzes', requireAdmin, (req, res) => {
     GROUP BY q.id
     ORDER BY q.archived ASC, q.created_at DESC
   `).all();
+
+  const latestSessions = db.prepare(`
+    SELECT quiz_id, id, status FROM (
+      SELECT quiz_id, id, status,
+             ROW_NUMBER() OVER (PARTITION BY quiz_id ORDER BY created_at DESC) as rn
+      FROM session
+    ) WHERE rn = 1
+  `).all();
+  const latestByQuiz = Object.fromEntries(latestSessions.map(s => [s.quiz_id, s]));
+
   res.json(quizzes.map(q => {
-    const latestSession = db.prepare('SELECT id, status FROM session WHERE quiz_id = ? ORDER BY created_at DESC LIMIT 1').get(q.id);
+    const latestSession = latestByQuiz[q.id];
     return {
       id: q.id, title: q.title, adminToken: q.admin_token, themeColor: q.theme_color,
       logoUrl: q.logo_url, createdAt: q.created_at, sessionCount: q.session_count,

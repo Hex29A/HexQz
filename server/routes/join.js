@@ -241,38 +241,44 @@ router.post('/answer', (req, res) => {
     }
   }
 
-  // Save or update response
-  // For multiple_choice, store comma-separated IDs in text_answer (answer_id has FK constraint)
+  // Save or update response.
+  // multiple_choice keeps its selected IDs in their own JSON column instead
+  // of comma-joined into text_answer (issue #27) — a free_text answer that
+  // happens to contain a comma used to be ambiguous with that encoding.
   const isMultipleChoice = question.type === 'multiple_choice';
   const storedAnswerId = isMultipleChoice ? null : (Array.isArray(answerId) ? answerId[0] : (answerId || null));
-  const storedTextAnswer = isMultipleChoice && Array.isArray(answerId)
-    ? answerId.join(',')
+  const storedSelectedIds = isMultipleChoice && Array.isArray(answerId) ? JSON.stringify(answerId) : null;
+  const storedTextAnswer = isMultipleChoice
+    ? null
     : (typeof textAnswer === 'object' ? JSON.stringify(textAnswer) : (textAnswer || null));
 
-  if (existing) {
-    // Revision: update existing response and adjust score
-    const oldPoints = existing.points_awarded || 0;
-    db.prepare(`
-      UPDATE response SET answer_id = ?, text_answer = ?, is_correct = ?, points_awarded = ?, response_time_ms = ?, answered_at = unixepoch()
-      WHERE id = ?
-    `).run(storedAnswerId, storedTextAnswer, isCorrect, points, responseTimeMs, existing.id);
+  // Response + score update happen together: a crash between them must not
+  // leave a scored answer with no recorded response, or vice versa (issue #27).
+  const saveResponse = db.transaction(() => {
+    if (existing) {
+      const oldPoints = existing.points_awarded || 0;
+      db.prepare(`
+        UPDATE response SET answer_id = ?, text_answer = ?, selected_answer_ids = ?, is_correct = ?, points_awarded = ?, response_time_ms = ?, answered_at = unixepoch()
+        WHERE id = ?
+      `).run(storedAnswerId, storedTextAnswer, storedSelectedIds, isCorrect, points, responseTimeMs, existing.id);
 
-    const pointsDiff = points - oldPoints;
-    if (pointsDiff !== 0 && question.type !== 'estimation') {
-      db.prepare('UPDATE participant SET score = score + ? WHERE id = ?').run(pointsDiff, participantId);
-    }
-  } else {
-    // New response
-    const responseId = randomUUID();
-    db.prepare(`
-      INSERT INTO response (id, participant_id, question_id, answer_id, text_answer, is_correct, points_awarded, response_time_ms)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(responseId, participantId, questionId, storedAnswerId, storedTextAnswer, isCorrect, points, responseTimeMs);
+      const pointsDiff = points - oldPoints;
+      if (pointsDiff !== 0 && question.type !== 'estimation') {
+        db.prepare('UPDATE participant SET score = score + ? WHERE id = ?').run(pointsDiff, participantId);
+      }
+    } else {
+      const responseId = randomUUID();
+      db.prepare(`
+        INSERT INTO response (id, participant_id, question_id, answer_id, text_answer, selected_answer_ids, is_correct, points_awarded, response_time_ms)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(responseId, participantId, questionId, storedAnswerId, storedTextAnswer, storedSelectedIds, isCorrect, points, responseTimeMs);
 
-    if (points > 0 && question.type !== 'estimation') {
-      db.prepare('UPDATE participant SET score = score + ? WHERE id = ?').run(points, participantId);
+      if (points > 0 && question.type !== 'estimation') {
+        db.prepare('UPDATE participant SET score = score + ? WHERE id = ?').run(points, participantId);
+      }
     }
-  }
+  });
+  saveResponse();
 
   // Emit answer count to session
   const io = req.app.get('io');
@@ -301,7 +307,7 @@ router.get('/session/:sessionId/question/:questionId/responses', (req, res) => {
   if (!session || session.admin_token !== adminToken) return res.status(403).json({ error: 'Forbidden' });
 
   const responses = db.prepare(`
-    SELECT r.id, r.text_answer, r.answer_id, r.is_correct, r.points_awarded, r.reviewed,
+    SELECT r.id, r.text_answer, r.answer_id, r.selected_answer_ids, r.is_correct, r.points_awarded, r.reviewed,
            p.display_name, p.id as participant_id
     FROM response r
     JOIN participant p ON p.id = r.participant_id
@@ -317,12 +323,9 @@ router.get('/session/:sessionId/question/:questionId/responses', (req, res) => {
     let answerText = null;
     if (r.answer_id) {
       answerText = answerMap[r.answer_id] || r.answer_id;
-    } else if (r.text_answer && r.text_answer.includes(',')) {
-      // multiple_choice: comma-separated answer IDs stored in text_answer
-      const ids = r.text_answer.split(',');
-      if (ids.every(id => answerMap[id])) {
-        answerText = ids.map(id => answerMap[id]).join(', ');
-      }
+    } else if (r.selected_answer_ids) {
+      const ids = JSON.parse(r.selected_answer_ids);
+      answerText = ids.map(id => answerMap[id] || id).join(', ');
     }
     return {
       id: r.id,
@@ -369,15 +372,15 @@ router.post('/session/:sessionId/override', (req, res) => {
     : 0;
   const pointsDiff = newPoints - oldPoints;
 
-  // Update response
-  db.prepare('UPDATE response SET is_correct = ?, points_awarded = ?, reviewed = 1 WHERE id = ?')
-    .run(isCorrect ? 1 : 0, newPoints, responseId);
+  db.transaction(() => {
+    db.prepare('UPDATE response SET is_correct = ?, points_awarded = ?, reviewed = 1 WHERE id = ?')
+      .run(isCorrect ? 1 : 0, newPoints, responseId);
 
-  // Adjust participant score
-  if (pointsDiff !== 0) {
-    db.prepare('UPDATE participant SET score = score + ? WHERE id = ?')
-      .run(pointsDiff, response.participant_id);
-  }
+    if (pointsDiff !== 0) {
+      db.prepare('UPDATE participant SET score = score + ? WHERE id = ?')
+        .run(pointsDiff, response.participant_id);
+    }
+  })();
 
   // Broadcast updated scores
   const io = req.app.get('io');

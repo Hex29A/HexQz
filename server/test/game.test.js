@@ -190,6 +190,64 @@ test('#16 #9 #7 #19 #18: full game flow scores correctly', async () => {
   assert.equal(db.prepare('SELECT COUNT(*) c FROM participant WHERE session_id = ?').get(s2.sessionId).c, 0);
 });
 
+test('#27: multiple_choice is scored and reported without the old comma-text encoding', async () => {
+  const token = await createQuiz();
+  const mcQ = await c.post(`/quiz/${token}/question`, {
+    text: 'Vilka är primtal?', type: 'multiple_choice',
+    answers: [{ text: '2', isCorrect: true }, { text: '3', isCorrect: true }, { text: '4', isCorrect: false }]
+  });
+  assert.equal(mcQ.status, 201);
+  // A free_text correct answer containing a comma used to collide with the
+  // multiple_choice encoding (both lived in text_answer, split on ',').
+  const ftQ = await c.post(`/quiz/${token}/question`, {
+    text: 'Hälsning?', type: 'free_text', answers: [{ text: 'Hej, hopp', isCorrect: true }]
+  });
+  assert.equal(ftQ.status, 201);
+
+  const s = await createSession(token);
+  const p = await register(s.joinCode, 'Mika');
+  const state = await start(s.sessionId, token);
+  const two = state.answers.find(a => a.text === '2').id;
+  const three = state.answers.find(a => a.text === '3').id;
+  // Single participant: the question early-closes as soon as this answer
+  // lands, so answer once (correctly) rather than testing revision here.
+  await answer(p, mcQ.body.questionId, { answerId: [two, three] });
+  await waitFor(c, s.sessionId, st => st.currentPhase !== 'question');
+
+  await waitFor(c, s.sessionId, st => ['scoreboard', 'waiting_for_continue'].includes(st.currentPhase), 20000);
+  const cont = await c.post(`/session/${s.sessionId}/continue`, {}, { 'x-admin-token': token });
+  assert.equal(cont.status, 200);
+  const q2 = await waitFor(c, s.sessionId, st => st.currentPhase === 'question' && st.question.id === ftQ.body.questionId);
+  assert.equal(q2.question.id, ftQ.body.questionId);
+  await answer(p, ftQ.body.questionId, { textAnswer: 'Hej, hopp' });
+  await waitFor(c, s.sessionId, st => st.currentPhase !== 'question');
+
+  const results = await c.get(`/session/${s.sessionId}/results`, { 'x-admin-token': token });
+  assert.equal(results.status, 200);
+  const [mcRow, ftRow] = results.body.breakdown.Mika;
+  assert.equal(mcRow.correct, true);
+  assert.deepEqual(mcRow.answer.split(', ').sort(), ['2', '3']);
+  assert.equal(ftRow.correct, true);
+  assert.equal(ftRow.answer, 'Hej, hopp', 'comma in a free_text answer is not mistaken for multiple_choice ids');
+
+  const responses = await c.get(`/session/${s.sessionId}/question/${mcQ.body.questionId}/responses`, { 'x-admin-token': token });
+  const mika = responses.body.find(r => r.displayName === 'Mika' || r.participantId === p.participantId);
+  assert.deepEqual((mika.answerText || '').split(', ').sort(), ['2', '3']);
+});
+
+test('#27: /admin/quizzes reports the latest session per quiz', async () => {
+  const token = await createQuiz();
+  const older = await createSession(token, { sessionName: 'first' });
+  await sleep(1100); // created_at has second resolution
+  const newer = await createSession(token, { sessionName: 'second' });
+
+  const list = await c.get('/admin/quizzes', secretHeader);
+  assert.equal(list.status, 200);
+  const quiz = list.body.find(q => q.adminToken === token);
+  assert.equal(quiz.sessionCount, 2);
+  assert.equal(quiz.latestSessionId, newer.sessionId, `expected ${newer.sessionId}, got ${quiz.latestSessionId} (older=${older.sessionId})`);
+});
+
 test('#8: duplicate name does not leak the existing participant id', async () => {
   const token = await createQuiz();
   const s = await createSession(token);

@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS response (
   question_id TEXT NOT NULL REFERENCES question(id) ON DELETE CASCADE,
   answer_id TEXT REFERENCES answer(id) ON DELETE SET NULL,
   text_answer TEXT,
+  selected_answer_ids TEXT,
   is_correct INTEGER NOT NULL DEFAULT 0,
   points_awarded INTEGER NOT NULL DEFAULT 0,
   reviewed INTEGER NOT NULL DEFAULT 0,

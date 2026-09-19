@@ -15,17 +15,26 @@ db.pragma('foreign_keys = ON');
 const schema = readFileSync(join(__dirname, 'schema.sql'), 'utf-8');
 db.exec(schema);
 
-try { db.exec('ALTER TABLE quiz ADD COLUMN archived INTEGER DEFAULT 0'); } catch {}
-try { db.exec('ALTER TABLE quiz ADD COLUMN light_mode INTEGER DEFAULT 0'); } catch {}
-try { db.exec('ALTER TABLE quiz ADD COLUMN answer_time_seconds INTEGER DEFAULT 30'); } catch {}
-try { db.exec('ALTER TABLE quiz ADD COLUMN scoreboard_pause_seconds INTEGER DEFAULT 10'); } catch {}
-try { db.exec('ALTER TABLE session ADD COLUMN auto_mode INTEGER DEFAULT 0'); } catch {}
-try { db.exec('ALTER TABLE session ADD COLUMN answer_time_seconds INTEGER'); } catch {}
-try { db.exec('ALTER TABLE session ADD COLUMN scoreboard_pause_seconds INTEGER DEFAULT 10'); } catch {}
-try { db.exec('ALTER TABLE session ADD COLUMN question_started_at INTEGER'); } catch {}
-try { db.exec('ALTER TABLE session ADD COLUMN current_phase TEXT DEFAULT \'waiting\''); } catch {}
-try { db.exec('ALTER TABLE response ADD COLUMN response_time_ms INTEGER'); } catch {}
-try { db.exec('ALTER TABLE participant ADD COLUMN secret TEXT'); } catch {}
+// Added columns, checked explicitly instead of swallowing every ALTER error
+// (issue #27) — a typo or a real constraint failure now surfaces instead of
+// being silently ignored alongside "column already exists".
+function ensureColumn(table, column, definition) {
+  const exists = db.pragma(`table_info(${table})`).some(c => c.name === column);
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+ensureColumn('quiz', 'archived', 'INTEGER DEFAULT 0');
+ensureColumn('quiz', 'light_mode', 'INTEGER DEFAULT 0');
+ensureColumn('quiz', 'answer_time_seconds', 'INTEGER DEFAULT 30');
+ensureColumn('quiz', 'scoreboard_pause_seconds', 'INTEGER DEFAULT 10');
+ensureColumn('session', 'auto_mode', 'INTEGER DEFAULT 0');
+ensureColumn('session', 'answer_time_seconds', 'INTEGER');
+ensureColumn('session', 'scoreboard_pause_seconds', 'INTEGER DEFAULT 10');
+ensureColumn('session', 'question_started_at', 'INTEGER');
+ensureColumn('session', 'current_phase', "TEXT DEFAULT 'waiting'");
+ensureColumn('response', 'response_time_ms', 'INTEGER');
+ensureColumn('response', 'selected_answer_ids', 'TEXT');
+ensureColumn('participant', 'secret', 'TEXT');
 
 // Migration: ON DELETE rules on participant/response (issue #18).
 // SQLite cannot ALTER a foreign key, so tables created before the rules
@@ -62,10 +71,11 @@ if (!hasOnDelete('response', 'question', 'CASCADE') || !hasOnDelete('participant
         reviewed INTEGER NOT NULL DEFAULT 0,
         answered_at INTEGER DEFAULT (unixepoch()),
         response_time_ms INTEGER,
+        selected_answer_ids TEXT,
         UNIQUE(participant_id, question_id)
       );
-      INSERT INTO response_new (id, participant_id, question_id, answer_id, text_answer, is_correct, points_awarded, reviewed, answered_at, response_time_ms)
-        SELECT id, participant_id, question_id, answer_id, text_answer, is_correct, points_awarded, reviewed, answered_at, response_time_ms FROM response;
+      INSERT INTO response_new (id, participant_id, question_id, answer_id, text_answer, is_correct, points_awarded, reviewed, answered_at, response_time_ms, selected_answer_ids)
+        SELECT id, participant_id, question_id, answer_id, text_answer, is_correct, points_awarded, reviewed, answered_at, response_time_ms, selected_answer_ids FROM response;
       DROP TABLE response;
       ALTER TABLE response_new RENAME TO response;
     `);

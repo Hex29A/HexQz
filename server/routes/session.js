@@ -121,17 +121,36 @@ router.get('/session/:sessionId/current', (req, res) => {
   res.json(state);
 });
 
-// Resolve what a response answered, as text
-function answerTextFor(resp) {
-  if (resp.answer_id) {
-    return db.prepare('SELECT text FROM answer WHERE id = ?').get(resp.answer_id)?.text || null;
+// Resolve what a response answered, as text, against a pre-fetched
+// answerId -> text map so callers don't hit the DB per response (issue #27).
+function answerTextFor(resp, answerMap) {
+  if (resp.answer_id) return answerMap[resp.answer_id] || null;
+  if (resp.selected_answer_ids) {
+    return JSON.parse(resp.selected_answer_ids).map(id => answerMap[id]).filter(Boolean).join(', ') || null;
   }
-  if (resp.text_answer) {
-    const ids = resp.text_answer.split(',');
-    const texts = ids.map(id => db.prepare('SELECT text FROM answer WHERE id = ?').get(id)?.text).filter(Boolean);
-    return texts.length === ids.length && texts.length > 0 ? texts.join(', ') : resp.text_answer;
-  }
-  return null;
+  return resp.text_answer || null;
+}
+
+// One query for every response in the session, keyed by participant+question,
+// instead of participants x questions round trips (issue #27).
+function getResponseMap(sessionId) {
+  const rows = db.prepare(`
+    SELECT r.* FROM response r
+    JOIN participant p ON p.id = r.participant_id
+    WHERE p.session_id = ?
+  `).all(sessionId);
+  const map = new Map();
+  for (const r of rows) map.set(`${r.participant_id}:${r.question_id}`, r);
+  return map;
+}
+
+function getQuizAnswerMap(quizId) {
+  const rows = db.prepare(`
+    SELECT a.id, a.text FROM answer a
+    JOIN question q ON q.id = a.question_id
+    WHERE q.quiz_id = ?
+  `).all(quizId);
+  return Object.fromEntries(rows.map(a => [a.id, a.text]));
 }
 
 // Session results
@@ -142,14 +161,15 @@ router.get('/session/:sessionId/results', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE id = ?').get(session.quiz_id);
   const questions = engine.getQuestions(session.quiz_id);
   const participants = db.prepare('SELECT * FROM participant WHERE session_id = ? ORDER BY score DESC').all(session.id);
-  const responseFor = db.prepare('SELECT * FROM response WHERE participant_id = ? AND question_id = ?');
+  const responses = getResponseMap(session.id);
+  const answerMap = getQuizAnswerMap(session.quiz_id);
 
   const breakdown = {};
   for (const p of participants) {
     breakdown[p.display_name] = questions.map(q => {
-      const resp = responseFor.get(p.id, q.id);
+      const resp = responses.get(`${p.id}:${q.id}`);
       if (!resp) return { question: q.text, answer: null, correct: false, points: 0 };
-      return { question: q.text, answer: answerTextFor(resp), correct: !!resp.is_correct, points: resp.points_awarded || 0 };
+      return { question: q.text, answer: answerTextFor(resp, answerMap), correct: !!resp.is_correct, points: resp.points_awarded || 0 };
     });
   }
 
@@ -193,7 +213,8 @@ router.get('/session/:sessionId/export', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE id = ?').get(session.quiz_id);
   const participants = db.prepare('SELECT * FROM participant WHERE session_id = ? ORDER BY score DESC').all(session.id);
   const questions = engine.getQuestions(session.quiz_id);
-  const responseFor = db.prepare('SELECT * FROM response WHERE participant_id = ? AND question_id = ?');
+  const responses = getResponseMap(session.id);
+  const answerMap = getQuizAnswerMap(session.quiz_id);
 
   // CSV cells: quote everything, double inner quotes, and neutralise formula
   // injection (cells starting with = + - @ or tab/CR) with a leading quote (issue #11).
@@ -210,8 +231,8 @@ router.get('/session/:sessionId/export', (req, res) => {
   participants.forEach((p, idx) => {
     csv += `${idx + 1},${cell(p.display_name)},${cell(p.team_name)},${p.score}`;
     for (const q of questions) {
-      const resp = responseFor.get(p.id, q.id);
-      csv += resp ? ',' + cell(`${resp.is_correct ? '✓' : '✗'} ${answerTextFor(resp) || ''}`) : ',""';
+      const resp = responses.get(`${p.id}:${q.id}`);
+      csv += resp ? ',' + cell(`${resp.is_correct ? '✓' : '✗'} ${answerTextFor(resp, answerMap) || ''}`) : ',""';
     }
     csv += '\n';
   });
