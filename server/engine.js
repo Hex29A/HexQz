@@ -159,7 +159,7 @@ export function buildSessionState(sessionId) {
   const phase = session.current_phase;
   const index = session.current_question_index;
   const current = questions[index] || null;
-  const revealed = REVEAL_PHASES.includes(phase);
+  const revealed = REVEAL_PHASES.includes(phase) && !hidden;
   const state = {
     ...base,
     currentPhase: phase,
@@ -180,8 +180,10 @@ export function buildSessionState(sessionId) {
     state.answerCount = getAnswerCount(current.id, sessionId);
   }
   if (current && revealed) {
-    state.roundWinner = hidden ? null : getRoundWinner(current.id, sessionId);
+    state.roundWinner = getRoundWinner(current.id, sessionId);
     state.questionStats = questionStats(current, sessionId);
+  }
+  if (current && (revealed || phase === 'waiting_for_continue')) {
     const next = questions[index + 1];
     state.nextQuestion = next ? publicQuestion(next) : null;
   }
@@ -287,6 +289,12 @@ export function closeQuestion(sessionId) {
   if (question.type === 'estimation' && question.correct_value !== null) {
     scoreEstimationQuestion(question, sessionId);
   }
+  // Hidden mode: no reveal at all — lock the answers and wait for the host.
+  if (scoresHidden(session)) {
+    console.log(`[CLOSE] ${sessionId} Q${session.current_question_index + 1}: answers locked (hidden mode)`);
+    nextAfterResults(sessionId, session);
+    return true;
+  }
   const stats = questionStats(question, sessionId);
   const winner = getRoundWinner(question.id, sessionId);
   console.log(`[CLOSE] ${sessionId} Q${session.current_question_index + 1}: winner=${winner ? `${winner.name} ${winner.timeMs}ms` : 'none'}`);
@@ -301,7 +309,7 @@ export function showRoundResult(sessionId) {
   const session = activeSession(sessionId, ['correct_answer']);
   if (!session) return;
   clearTimers(sessionId);
-  // Quiz set to hide standings until the end: skip round winner and scoreboard.
+  // Hidden mode (e.g. a session resumed in this phase): skip winner and scoreboard.
   if (scoresHidden(session)) return nextAfterResults(sessionId, session);
   const question = getQuestions(session.quiz_id)[session.current_question_index];
   const winner = question ? getRoundWinner(question.id, sessionId) : null;
@@ -344,12 +352,14 @@ function nextAfterResults(sessionId, session) {
   const index = session.current_question_index;
   if (index + 1 >= questions.length) return finishSession(sessionId);
   const question = questions[index];
+  const hidden = scoresHidden(session);
   setPhase(sessionId, 'waiting_for_continue');
   emit(sessionId, 'session:waiting_for_continue', {
     nextIndex: index + 1,
     nextQuestion: publicQuestion(questions[index + 1]),
-    questionStats: questionStats(question, sessionId),
-    scoresHidden: scoresHidden(session)
+    ...(hidden
+      ? { scoresHidden: true, answerCount: getAnswerCount(question.id, sessionId) }
+      : { questionStats: questionStats(question, sessionId) })
   });
 }
 

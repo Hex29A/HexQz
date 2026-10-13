@@ -14,7 +14,7 @@ export function viewPhase(state) {
   if (!state) return 'waiting';
   if (state.status === 'waiting') return 'waiting';
   if (state.status === 'finished') return 'finished';
-  // Standings hidden until the end: keep the revealed answer on screen between questions.
-  if (state.scoresHidden && state.currentPhase === 'waiting_for_continue') return 'correctAnswer';
+  // Hidden mode: nothing is revealed between questions, the answers are just locked.
+  if (state.scoresHidden && state.currentPhase === 'waiting_for_continue') return 'locked';
   return VIEW_PHASE[state.currentPhase] || 'question';
 }

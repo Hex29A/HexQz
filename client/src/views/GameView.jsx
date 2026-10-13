@@ -107,7 +107,7 @@ export default function GameView() {
       'session:correct_answer': () => setPhase('correctAnswer'),
       'session:round_result': (d) => { setRoundWinner(d.winner); setPhase('roundResult'); },
       'session:scores': (d) => { setScores(d.scores || []); setQuestionWinner(d.roundWinner || null); setPhase('scoreboard'); },
-      'session:waiting_for_continue': (d) => setPhase(d?.scoresHidden ? 'correctAnswer' : 'scoreboard'),
+      'session:waiting_for_continue': (d) => setPhase(d?.scoresHidden ? 'locked' : 'scoreboard'),
       'session:finished': () => navigate(`/results/${sessionId}`),
       'session:reset': () => {
         localStorage.removeItem(`participant:${sessionId}`);
@@ -150,6 +150,16 @@ export default function GameView() {
   const timerPercentage = timeRemaining !== null && answerTimeSeconds > 0 ? (timeRemaining / answerTimeSeconds) * 100 : 100;
   const timerColor = timerPercentage > 50 ? 'bg-green-500' : timerPercentage > 20 ? 'bg-yellow-500' : 'bg-red-500';
   const answerLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+  if (phase === 'locked') return (
+    <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+      <div className="text-6xl mb-4">🔒</div>
+      <h2 className="text-2xl font-bold mb-2">Answers locked</h2>
+      <p className="text-text-secondary text-sm">
+        {questionIndex + 1 >= totalQuestions ? 'Final results coming up...' : 'Next question coming up...'}
+      </p>
+    </div>
+  );
 
   if (phase === 'getReady') return (
     <div className="flex flex-col items-center justify-center min-h-screen p-4">

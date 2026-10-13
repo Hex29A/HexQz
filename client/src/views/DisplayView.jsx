@@ -91,7 +91,10 @@ export default function DisplayView() {
       'session:correct_answer': (d) => { setCorrectAnswerQuestion(d.question); setCorrectAnswers(d.correctAnswers || []); setPhase('correctAnswer'); },
       'session:round_result': (d) => { setRoundWinner(d.winner); setPhase('roundResult'); },
       'session:scores': (d) => { setScores(d.scores || []); setQuestionWinner(d.roundWinner || null); setPhase('scoreboard'); },
-      'session:waiting_for_continue': (d) => setPhase(d?.scoresHidden ? 'correctAnswer' : 'scoreboard'),
+      'session:waiting_for_continue': (d) => {
+        if (d?.answerCount) setAnswerCount({ count: d.answerCount.count, total: d.answerCount.total });
+        setPhase(d?.scoresHidden ? 'locked' : 'scoreboard');
+      },
       'session:finished': (d) => { setPhase('finished'); setScores(d.results || []); if (d.results?.length) setWinner(d.results[0]); },
       'session:reset': () => { setPhase('waiting'); setScores([]); setQuestion(null); setQuestionIndex(0); setAnswerCount({ count: 0, total: 0 }); }
     }
@@ -332,6 +335,23 @@ export default function DisplayView() {
         <div className="max-w-4xl mx-auto w-full">
           <Scoreboard scores={scores} maxVisible={10} displayMode={true} />
         </div>
+      </div>
+    );
+  }
+
+  // Hidden mode: answers locked, nothing revealed until the end
+  if (phase === 'locked') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-gradient-to-br from-bg via-bg-secondary to-bg">
+        <MiniQR joinCode={joinCode} />
+        <div className="text-8xl mb-6">🔒</div>
+        <h1 className="text-6xl font-bold mb-8 text-center">Answers locked</h1>
+        {question && (
+          <h2 className="text-4xl font-bold mb-8 text-center text-text-secondary max-w-4xl">{question.text}</h2>
+        )}
+        {answerCount.total > 0 && (
+          <p className="text-3xl text-text-secondary">{answerCount.count}/{answerCount.total} answered</p>
+        )}
       </div>
     );
   }
