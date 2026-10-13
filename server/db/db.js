@@ -27,6 +27,7 @@ ensureColumn('quiz', 'archived', 'INTEGER DEFAULT 0');
 ensureColumn('quiz', 'light_mode', 'INTEGER DEFAULT 0');
 ensureColumn('quiz', 'answer_time_seconds', 'INTEGER DEFAULT 30');
 ensureColumn('quiz', 'scoreboard_pause_seconds', 'INTEGER DEFAULT 10');
+ensureColumn('quiz', 'hide_scores_until_end', 'INTEGER DEFAULT 0');
 ensureColumn('session', 'auto_mode', 'INTEGER DEFAULT 0');
 ensureColumn('session', 'answer_time_seconds', 'INTEGER');
 ensureColumn('session', 'scoreboard_pause_seconds', 'INTEGER DEFAULT 10');

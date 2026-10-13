@@ -107,7 +107,7 @@ export default function GameView() {
       'session:correct_answer': () => setPhase('correctAnswer'),
       'session:round_result': (d) => { setRoundWinner(d.winner); setPhase('roundResult'); },
       'session:scores': (d) => { setScores(d.scores || []); setQuestionWinner(d.roundWinner || null); setPhase('scoreboard'); },
-      'session:waiting_for_continue': () => setPhase('scoreboard'),
+      'session:waiting_for_continue': (d) => setPhase(d?.scoresHidden ? 'correctAnswer' : 'scoreboard'),
       'session:finished': () => navigate(`/results/${sessionId}`),
       'session:reset': () => {
         localStorage.removeItem(`participant:${sessionId}`);

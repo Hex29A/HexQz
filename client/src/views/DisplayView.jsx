@@ -91,7 +91,7 @@ export default function DisplayView() {
       'session:correct_answer': (d) => { setCorrectAnswerQuestion(d.question); setCorrectAnswers(d.correctAnswers || []); setPhase('correctAnswer'); },
       'session:round_result': (d) => { setRoundWinner(d.winner); setPhase('roundResult'); },
       'session:scores': (d) => { setScores(d.scores || []); setQuestionWinner(d.roundWinner || null); setPhase('scoreboard'); },
-      'session:waiting_for_continue': () => setPhase('scoreboard'),
+      'session:waiting_for_continue': (d) => setPhase(d?.scoresHidden ? 'correctAnswer' : 'scoreboard'),
       'session:finished': (d) => { setPhase('finished'); setScores(d.results || []); if (d.results?.length) setWinner(d.results[0]); },
       'session:reset': () => { setPhase('waiting'); setScores([]); setQuestion(null); setQuestionIndex(0); setAnswerCount({ count: 0, total: 0 }); }
     }

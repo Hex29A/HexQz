@@ -157,19 +157,20 @@ router.get('/quiz/:adminToken', (req, res) => {
       answers: answers.map(a => ({ id: a.id, text: a.text, isCorrect: !!a.is_correct, partLabel: a.part_label })) };
   });
   res.json({ id: quiz.id, title: quiz.title, adminToken: quiz.admin_token, themeColor: quiz.theme_color,
-    lightMode: !!quiz.light_mode, logoUrl: quiz.logo_url, createdAt: quiz.created_at, questions: questionsWithAnswers });
+    lightMode: !!quiz.light_mode, hideScoresUntilEnd: !!quiz.hide_scores_until_end, logoUrl: quiz.logo_url, createdAt: quiz.created_at, questions: questionsWithAnswers });
 });
 
 router.put('/quiz/:adminToken', (req, res) => {
   const quiz = db.prepare('SELECT * FROM quiz WHERE admin_token = ?').get(req.params.adminToken);
   if (!quiz) return res.status(404).json({ error: 'Quiz not found' });
-  const { lightMode, answerTimeSeconds, scoreboardPauseSeconds } = req.body;
+  const { lightMode, answerTimeSeconds, scoreboardPauseSeconds, hideScoresUntilEnd } = req.body;
   const title = str(req.body.title, { field: 'Title', max: 200, required: true });
   const themeColor = hexColor(req.body.themeColor);
   const logoUrl = imageUrl(req.body.logoUrl, 'logoUrl');
   const answerTime = answerTimeSeconds !== undefined ? Math.max(5, Math.min(300, parseInt(answerTimeSeconds) || 30)) : quiz.answer_time_seconds;
   const scoreboardPause = scoreboardPauseSeconds !== undefined ? Math.max(3, Math.min(60, parseInt(scoreboardPauseSeconds) || 10)) : quiz.scoreboard_pause_seconds;
-  db.prepare('UPDATE quiz SET title = ?, theme_color = ?, logo_url = ?, light_mode = ?, answer_time_seconds = ?, scoreboard_pause_seconds = ? WHERE id = ?').run(title, themeColor, logoUrl, lightMode ? 1 : 0, answerTime, scoreboardPause, quiz.id);
+  const hideScores = hideScoresUntilEnd !== undefined ? (hideScoresUntilEnd ? 1 : 0) : quiz.hide_scores_until_end;
+  db.prepare('UPDATE quiz SET title = ?, theme_color = ?, logo_url = ?, light_mode = ?, answer_time_seconds = ?, scoreboard_pause_seconds = ?, hide_scores_until_end = ? WHERE id = ?').run(title, themeColor, logoUrl, lightMode ? 1 : 0, answerTime, scoreboardPause, hideScores, quiz.id);
   res.json({ ok: true });
 });
 

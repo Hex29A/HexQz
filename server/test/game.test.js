@@ -362,3 +362,56 @@ test('#18: migration rebuilds tables with ON DELETE rules', () => {
   assert.equal(q.on_delete, 'CASCADE');
   assert.equal(ans.on_delete, 'SET NULL');
 });
+
+test('hide scores until end: no round winner or scoreboard between questions', async () => {
+  const token = await createQuiz();
+  const put = await c.put(`/quiz/${token}`, { title: 'Testquiz', hideScoresUntilEnd: true });
+  assert.equal(put.status, 200, JSON.stringify(put.body));
+  // a PUT without the field (e.g. the theme toggle) keeps the setting
+  await c.put(`/quiz/${token}`, { title: 'Testquiz', lightMode: true });
+  assert.equal((await c.get(`/quiz/${token}`)).body.hideScoresUntilEnd, true);
+
+  const q1 = await addSingleChoice(token);
+  const q2 = await addSingleChoice(token);
+  const s = await createSession(token);
+  const p = await register(s.joinCode, 'Dold');
+  const host = { 'x-admin-token': token };
+
+  const state = await start(s.sessionId, token);
+  assert.equal(state.scoresHidden, true);
+  assert.deepEqual(state.scores, [], 'standings not exposed mid-game');
+  await answer(p, q1, { answerId: state.answers.find(a => a.text === 'Paris').id });
+  const closed = await waitFor(c, s.sessionId, st => st.currentPhase !== 'question');
+  assert.equal(closed.currentPhase, 'correct_answer');
+  assert.ok(closed.questionStats, 'correct answer still revealed');
+  assert.equal(closed.roundWinner, null);
+
+  const adv = await c.post(`/session/${s.sessionId}/advance-phase`, {}, host);
+  assert.equal(adv.body.phase, 'waiting_for_continue', 'round_result and scoreboard skipped');
+  const waiting = (await c.get(`/session/${s.sessionId}/current`)).body;
+  assert.deepEqual(waiting.scores, []);
+
+  await c.post(`/session/${s.sessionId}/continue`, {}, host);
+  const second = await waitFor(c, s.sessionId, st => st.currentPhase === 'question' && st.question.id === q2);
+  await answer(p, q2, { answerId: second.answers.find(a => a.text === 'Paris').id });
+  await waitFor(c, s.sessionId, st => st.currentPhase === 'correct_answer');
+  await c.post(`/session/${s.sessionId}/advance-phase`, {}, host);
+  const done = await waitFor(c, s.sessionId, st => st.status === 'finished');
+  assert.equal(done.scoresHidden, false);
+  assert.ok(done.scores[0].score > 0, 'final standings shown at the end');
+});
+
+test('hide scores off (default): round result still shown', async () => {
+  const token = await createQuiz();
+  assert.equal((await c.get(`/quiz/${token}`)).body.hideScoresUntilEnd, false);
+  const q1 = await addSingleChoice(token);
+  await addSingleChoice(token);
+  const s = await createSession(token);
+  const p = await register(s.joinCode, 'Synlig');
+  const state = await start(s.sessionId, token);
+  assert.equal(state.scoresHidden, false);
+  await answer(p, q1, { answerId: state.answers.find(a => a.text === 'Paris').id });
+  await waitFor(c, s.sessionId, st => st.currentPhase === 'correct_answer');
+  const adv = await c.post(`/session/${s.sessionId}/advance-phase`, {}, { 'x-admin-token': token });
+  assert.equal(adv.body.phase, 'round_result');
+});

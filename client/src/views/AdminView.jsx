@@ -106,6 +106,22 @@ export default function AdminView() {
     setQuiz({ ...quiz, lightMode: newMode });
   };
 
+  const toggleHideScores = async () => {
+    const hide = !quiz.hideScoresUntilEnd;
+    await fetch(`/api/quiz/${adminToken}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: quiz.title,
+        themeColor: quiz.themeColor,
+        lightMode: quiz.lightMode,
+        logoUrl: quiz.logoUrl,
+        hideScoresUntilEnd: hide
+      })
+    });
+    setQuiz({ ...quiz, hideScoresUntilEnd: hide });
+  };
+
 
   const deleteSession = async (sessionId) => {
     if (!confirm('Delete this session and all its data?')) return;
@@ -158,6 +174,13 @@ export default function AdminView() {
             className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition text-sm ${quiz.lightMode ? 'bg-yellow-50 border-yellow-300 text-yellow-800' : 'bg-gray-700 border-gray-600 text-gray-300'}`}
           >
             {quiz.lightMode ? '☀️ Light' : '🌙 Dark'}
+          </button>
+          <button
+            onClick={toggleHideScores}
+            title="Skip the round winner and scoreboard after each question; show standings only at the end"
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition text-sm ${quiz.hideScoresUntilEnd ? 'bg-indigo-50 border-indigo-300 text-indigo-800' : 'bg-gray-700 border-gray-600 text-gray-300'}`}
+          >
+            {quiz.hideScoresUntilEnd ? '🙈 Scores hidden until end' : '🏆 Scores after each question'}
           </button>
         </div>
       </div>

@@ -126,14 +126,17 @@ export function questionStats(question, sessionId) {
 export function buildSessionState(sessionId) {
   const session = loadSession(sessionId);
   if (!session) return null;
-  const quiz = db.prepare('SELECT theme_color, light_mode FROM quiz WHERE id = ?').get(session.quiz_id);
+  const quiz = db.prepare('SELECT theme_color, light_mode, hide_scores_until_end FROM quiz WHERE id = ?').get(session.quiz_id);
   const questions = getQuestions(session.quiz_id);
+  // Hidden standings stay hidden in the polled state too, not just in the UI.
+  const hidden = !!quiz?.hide_scores_until_end && session.status === 'active';
   const base = {
     status: session.status,
     joinCode: session.join_code,
     sessionName: session.session_name,
     totalQuestions: questions.length,
-    scores: getSessionScores(sessionId),
+    scores: hidden ? [] : getSessionScores(sessionId),
+    scoresHidden: hidden,
     themeColor: quiz?.theme_color || null,
     lightMode: !!quiz?.light_mode,
     answerTimeSeconds: session.answer_time_seconds || null,
@@ -177,7 +180,7 @@ export function buildSessionState(sessionId) {
     state.answerCount = getAnswerCount(current.id, sessionId);
   }
   if (current && revealed) {
-    state.roundWinner = getRoundWinner(current.id, sessionId);
+    state.roundWinner = hidden ? null : getRoundWinner(current.id, sessionId);
     state.questionStats = questionStats(current, sessionId);
     const next = questions[index + 1];
     state.nextQuestion = next ? publicQuestion(next) : null;
@@ -298,6 +301,8 @@ export function showRoundResult(sessionId) {
   const session = activeSession(sessionId, ['correct_answer']);
   if (!session) return;
   clearTimers(sessionId);
+  // Quiz set to hide standings until the end: skip round winner and scoreboard.
+  if (scoresHidden(session)) return nextAfterResults(sessionId, session);
   const question = getQuestions(session.quiz_id)[session.current_question_index];
   const winner = question ? getRoundWinner(question.id, sessionId) : null;
   if (!winner) return showScoreboard(sessionId);
@@ -326,6 +331,15 @@ export function afterScoreboard(sessionId) {
   const session = activeSession(sessionId, ['scoreboard']);
   if (!session) return;
   clearTimers(sessionId);
+  nextAfterResults(sessionId, session);
+}
+
+function scoresHidden(session) {
+  const quiz = db.prepare('SELECT hide_scores_until_end FROM quiz WHERE id = ?').get(session.quiz_id);
+  return !!quiz?.hide_scores_until_end;
+}
+
+function nextAfterResults(sessionId, session) {
   const questions = getQuestions(session.quiz_id);
   const index = session.current_question_index;
   if (index + 1 >= questions.length) return finishSession(sessionId);
@@ -334,7 +348,8 @@ export function afterScoreboard(sessionId) {
   emit(sessionId, 'session:waiting_for_continue', {
     nextIndex: index + 1,
     nextQuestion: publicQuestion(questions[index + 1]),
-    questionStats: questionStats(question, sessionId)
+    questionStats: questionStats(question, sessionId),
+    scoresHidden: scoresHidden(session)
   });
 }
 

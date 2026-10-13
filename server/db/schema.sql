@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS quiz (
   logo_url TEXT,
   answer_time_seconds INTEGER DEFAULT 30,
   scoreboard_pause_seconds INTEGER DEFAULT 10,
+  hide_scores_until_end INTEGER DEFAULT 0,
   created_at INTEGER DEFAULT (unixepoch())
 );
 
