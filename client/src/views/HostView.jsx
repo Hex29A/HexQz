@@ -4,12 +4,14 @@ import { QRCodeSVG } from 'qrcode.react';
 import useSessionSocket, { socket } from '../hooks/useSessionSocket.js';
 import { useCountdown } from '../hooks/useCountdown.js';
 import { getAdminToken } from '../lib/adminToken.js';
+import PhoneHostQr from '../components/PhoneHostQr.jsx';
 import Scoreboard from '../components/Scoreboard.jsx';
 
 export default function HostView() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
   const [adminToken] = useState(() => getAdminToken(sessionId));
+  const [showPhoneQr, setShowPhoneQr] = useState(false);
   const [state, setState] = useState(null);
   const [participants, setParticipants] = useState([]);
   const [answerCount, setAnswerCount] = useState({ count: 0, total: 0, answered: [], waiting: [] });
@@ -283,6 +285,13 @@ export default function HostView() {
           >
             📺 Open TV screen
           </a>
+          <button
+            onClick={() => setShowPhoneQr(true)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-semibold transition flex items-center gap-2"
+          >
+            📱 Control from phone
+          </button>
+          {showPhoneQr && <PhoneHostQr sessionId={sessionId} adminToken={adminToken} onClose={() => setShowPhoneQr(false)} />}
         </div>
         {sessionName && (
           <div className="mb-6">
@@ -349,6 +358,13 @@ export default function HostView() {
             >
               📺 Open TV screen
             </a>
+            <button
+              onClick={() => setShowPhoneQr(true)}
+              className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
+            >
+              📱 Control from phone
+            </button>
+            {showPhoneQr && <PhoneHostQr sessionId={sessionId} adminToken={adminToken} onClose={() => setShowPhoneQr(false)} />}
           </div>
         </div>
         <div className="flex justify-between items-center mb-4">
@@ -429,6 +445,13 @@ export default function HostView() {
           >
             📺 Open TV screen
           </a>
+          <button
+            onClick={() => setShowPhoneQr(true)}
+            className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
+          >
+            📱 Control from phone
+          </button>
+          {showPhoneQr && <PhoneHostQr sessionId={sessionId} adminToken={adminToken} onClose={() => setShowPhoneQr(false)} />}
         </div>
       </div>
       <div className="flex justify-between items-center mb-4">
