@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 import { rememberAdminToken } from '../lib/adminToken.js';
 
 const THEMES = [
@@ -34,6 +35,7 @@ export default function AdminView() {
   const [showForm, setShowForm] = useState(false);
   const [showSessionDialog, setShowSessionDialog] = useState(false);
   const [newSessionName, setNewSessionName] = useState('');
+  const [phoneQrFor, setPhoneQrFor] = useState(null);
   const [useTimers, setUseTimers] = useState(true);
   const [sessionAnswerTime, setSessionAnswerTime] = useState(30);
   const [sessionScoreboardPause, setSessionScoreboardPause] = useState(10);
@@ -225,52 +227,67 @@ export default function AdminView() {
             {sessions.map(s => (
               <div key={s.id} className="group">
                 {(s.status === 'waiting' || s.status === 'active') ? (
-                  <div 
-                    onClick={() => { rememberAdminToken(s.id, adminToken); navigate(`/host/${s.id}`); }}
-                    className="p-4 bg-gray-800 rounded-lg border border-gray-700 hover:border-accent hover:bg-gray-750 cursor-pointer transition-all"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 flex-1">
-                        <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${
-                          s.status === 'active' ? 'bg-green-900 text-green-300' :
-                          'bg-yellow-900 text-yellow-300'
-                        }`}>{s.status}</span>
-                        {s.sessionName && (
-                          <span className="text-lg font-bold text-white">{s.sessionName}</span>
-                        )}
-                        <span className="font-mono text-lg font-semibold text-accent">{s.joinCode}</span>
-                        <span className="text-gray-500 text-sm">{s.participantCount} players</span>
-                        {s.status === 'active' && (
-                          <span className="text-blue-400 text-sm">Q{s.currentQuestionIndex + 1}</span>
-                        )}
-                        <span className="text-gray-600 text-xs">
-                          {s.answerTimeSeconds ? `⏱️${s.answerTimeSeconds}s` : '✋ Manual'}
-                          
-                          {s.scoreboardPauseSeconds && ` · ${s.scoreboardPauseSeconds}s pause`}
-                        </span>
-                        <span className="text-accent text-sm opacity-0 group-hover:opacity-100 transition">→ Open Host View</span>
-                      </div>
-                      <div className="flex gap-3">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); window.open(`/display/${s.id}`, '_blank'); }} 
-                          className="text-sm text-blue-400 hover:text-blue-300 transition"
-                        >
-                          📺 Display
-                        </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); rememberAdminToken(s.id, adminToken); navigate(`/results/${s.id}`); }} 
+                  <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+                    <div className="flex items-center gap-3 flex-wrap mb-3">
+                      <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${
+                        s.status === 'active' ? 'bg-green-900 text-green-300' :
+                        'bg-yellow-900 text-yellow-300'
+                      }`}>{s.status}</span>
+                      {s.sessionName && (
+                        <span className="text-lg font-bold text-white">{s.sessionName}</span>
+                      )}
+                      <span className="font-mono text-lg font-semibold text-accent">{s.joinCode}</span>
+                      <span className="text-gray-500 text-sm">{s.participantCount} players</span>
+                      {s.status === 'active' && (
+                        <span className="text-blue-400 text-sm">Q{s.currentQuestionIndex + 1}</span>
+                      )}
+                      <span className="text-gray-600 text-xs">
+                        {s.answerTimeSeconds ? `⏱️${s.answerTimeSeconds}s` : '✋ Manual'}
+                        {s.scoreboardPauseSeconds && ` · ${s.scoreboardPauseSeconds}s pause`}
+                      </span>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={() => window.open(`/display/${s.id}`, '_blank')}
+                        className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold transition"
+                      >
+                        📺 Open TV screen
+                      </button>
+                      <button
+                        onClick={() => { rememberAdminToken(s.id, adminToken); navigate(`/host/${s.id}`); }}
+                        className="px-4 py-2 rounded-lg bg-accent hover:opacity-90 text-white font-semibold transition"
+                      >
+                        🎮 Control here
+                      </button>
+                      <button
+                        onClick={() => setPhoneQrFor(phoneQrFor === s.id ? null : s.id)}
+                        className="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 text-white font-semibold transition"
+                      >
+                        📱 Control from phone
+                      </button>
+                      <div className="flex gap-3 items-center ml-auto">
+                        <button
+                          onClick={() => { rememberAdminToken(s.id, adminToken); navigate(`/results/${s.id}`); }}
                           className="text-sm text-gray-400 hover:text-white transition"
                         >
                           Results
                         </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); deleteSession(s.id); }} 
+                        <button
+                          onClick={() => deleteSession(s.id)}
                           className="text-sm text-red-400 hover:text-red-300 transition"
                         >
                           Delete
                         </button>
                       </div>
                     </div>
+                    {phoneQrFor === s.id && (
+                      <div className="mt-4 flex flex-col items-center gap-2 p-4 bg-white rounded-lg">
+                        {/* Carries the quiz admin token: shown on the admin screen only, never on the TV. */}
+                        <QRCodeSVG value={`${window.location.origin}/host/${s.id}?token=${adminToken}`} size={220} />
+                        <p className="text-gray-700 text-sm text-center">Scan with your phone to control this session.<br />Gives admin access to the quiz — don't show it to guests.</p>
+                        <button onClick={() => setPhoneQrFor(null)} className="text-sm text-gray-600 underline">Hide</button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="p-3 bg-gray-800 rounded-lg border border-gray-700">

@@ -281,7 +281,7 @@ export default function HostView() {
             target="_blank"
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-semibold transition flex items-center gap-2"
           >
-            📺 Open Display View
+            📺 Open TV screen
           </a>
         </div>
         {sessionName && (
