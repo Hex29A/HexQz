@@ -347,7 +347,7 @@ export default function HostView() {
               target="_blank"
               className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
             >
-              📺 Open Display
+              📺 Open TV screen
             </a>
           </div>
         </div>
@@ -427,7 +427,7 @@ export default function HostView() {
             target="_blank"
             className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-xs font-semibold transition flex items-center gap-1.5"
           >
-            📺 Open Display
+            📺 Open TV screen
           </a>
         </div>
       </div>
