@@ -3,6 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { rememberAdminToken } from '../lib/adminToken.js';
 
+// Number inputs keep the raw text while typing; clamp only on blur/submit,
+// otherwise clearing the field to type a new value snaps it to the min/fallback.
+function clampInt(value, min, max, fallback) {
+  const n = parseInt(value, 10);
+  return Number.isNaN(n) ? fallback : Math.max(min, Math.min(max, n));
+}
+
 const THEMES = [
   { id: 'indigo', label: 'Indigo', accent: '#6366f1', bg: '#0f172a', card: '#1e293b', text: '#f1f5f9', desc: 'Clean & modern' },
   { id: 'emerald', label: 'Emerald', accent: '#10b981', bg: '#021a13', card: 'rgba(6,78,59,0.5)', text: '#ecfdf5', desc: 'Forest glass' },
@@ -37,8 +44,8 @@ export default function AdminView() {
   const [newSessionName, setNewSessionName] = useState('');
   const [phoneQrFor, setPhoneQrFor] = useState(null);
   const [useTimers, setUseTimers] = useState(true);
-  const [sessionAnswerTime, setSessionAnswerTime] = useState(30);
-  const [sessionScoreboardPause, setSessionScoreboardPause] = useState(10);
+  const [sessionAnswerTime, setSessionAnswerTime] = useState('30');
+  const [sessionScoreboardPause, setSessionScoreboardPause] = useState('10');
 
   const loadQuiz = async () => {
     const res = await fetch(`/api/quiz/${adminToken}`);
@@ -63,8 +70,8 @@ export default function AdminView() {
       body: JSON.stringify({ 
         sessionName: newSessionName.trim() || null,
         useTimers,
-        answerTimeSeconds: useTimers ? sessionAnswerTime : null,
-        scoreboardPauseSeconds: sessionScoreboardPause
+        answerTimeSeconds: useTimers ? clampInt(sessionAnswerTime, 5, 300, 30) : null,
+        scoreboardPauseSeconds: clampInt(sessionScoreboardPause, 3, 60, 10)
       })
     });
     const data = await res.json();
@@ -374,7 +381,8 @@ export default function AdminView() {
                       min="5"
                       max="300"
                       value={sessionAnswerTime}
-                      onChange={(e) => setSessionAnswerTime(Math.max(5, Math.min(300, parseInt(e.target.value) || 30)))}
+                      onChange={(e) => setSessionAnswerTime(e.target.value)}
+                      onBlur={() => setSessionAnswerTime(String(clampInt(sessionAnswerTime, 5, 300, 30)))}
                       className="w-full px-3 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent"
                     />
                   </div>
@@ -385,7 +393,8 @@ export default function AdminView() {
                       min="3"
                       max="60"
                       value={sessionScoreboardPause}
-                      onChange={(e) => setSessionScoreboardPause(Math.max(3, Math.min(60, parseInt(e.target.value) || 10)))}
+                      onChange={(e) => setSessionScoreboardPause(e.target.value)}
+                      onBlur={() => setSessionScoreboardPause(String(clampInt(sessionScoreboardPause, 3, 60, 10)))}
                       className="w-full px-3 py-2 bg-gray-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-accent"
                     />
                   </div>
