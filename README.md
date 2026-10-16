@@ -29,6 +29,16 @@ Real-time quiz platform. Create quizzes, control the pace, players join via QR c
 - **Multi-quiz** — run multiple quizzes simultaneously
 - **Version tracking** — build hash shown in admin dashboard footer for easy deploy verification
 
+## Screenshots
+
+Click a picture to see it full size.
+
+<table>
+<tr><td align="center"><a href="docs/screenshots/1-display-lobby.png"><img src="docs/screenshots/1-display-lobby.png" width="260" alt="Big screen: join by QR code"></a><br><sub>Big screen: join by QR code</sub></td><td align="center"><a href="docs/screenshots/2-display-question.png"><img src="docs/screenshots/2-display-question.png" width="260" alt="Big screen: question and timer"></a><br><sub>Big screen: question and timer</sub></td><td align="center"><a href="docs/screenshots/3-display-scoreboard.png"><img src="docs/screenshots/3-display-scoreboard.png" width="260" alt="Big screen: scoreboard"></a><br><sub>Big screen: scoreboard</sub></td></tr>
+<tr><td align="center"><a href="docs/screenshots/4-phone-lobby.png"><img src="docs/screenshots/4-phone-lobby.png" width="150" alt="Phone: lobby"></a><br><sub>Phone: lobby</sub></td><td align="center"><a href="docs/screenshots/5-phone-question.png"><img src="docs/screenshots/5-phone-question.png" width="150" alt="Phone: answering"></a><br><sub>Phone: answering</sub></td><td align="center"><a href="docs/screenshots/6-phone-winner.png"><img src="docs/screenshots/6-phone-winner.png" width="150" alt="Phone: fastest answer"></a><br><sub>Phone: fastest answer</sub></td></tr>
+<tr><td align="center"><a href="docs/screenshots/7-admin-quiz.png"><img src="docs/screenshots/7-admin-quiz.png" width="260" alt="Admin: quiz editor"></a><br><sub>Admin: quiz editor</sub></td><td align="center"><a href="docs/screenshots/8-results.png"><img src="docs/screenshots/8-results.png" width="260" alt="Results with answers per player"></a><br><sub>Results with answers per player</sub></td><td></td></tr>
+</table>
+
 ## Quick Start
 
 ```bash
