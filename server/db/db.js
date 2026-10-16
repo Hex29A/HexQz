@@ -31,6 +31,10 @@ ensureColumn('quiz', 'hide_scores_until_end', 'INTEGER DEFAULT 0');
 ensureColumn('quiz', 'show_scoreboard', 'INTEGER DEFAULT 1');
 ensureColumn('quiz', 'cover_image_url', 'TEXT');
 ensureColumn('quiz', 'cover_text', 'TEXT');
+// Per-quiz pacing between questions (seconds); NULL means the engine default.
+ensureColumn('quiz', 'get_ready_seconds', 'INTEGER');
+ensureColumn('quiz', 'reveal_seconds', 'INTEGER');
+ensureColumn('quiz', 'winner_seconds', 'INTEGER');
 ensureColumn('session', 'auto_mode', 'INTEGER DEFAULT 0');
 ensureColumn('session', 'answer_time_seconds', 'INTEGER');
 ensureColumn('session', 'scoreboard_pause_seconds', 'INTEGER DEFAULT 10');

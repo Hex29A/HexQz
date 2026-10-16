@@ -481,3 +481,33 @@ test('quiz cover: stored, shown in the waiting state, kept and cleared', async (
   assert.equal(cleared.coverImageUrl, null);
   assert.ok(!cleared.coverText);
 });
+
+test('pacing: per-quiz screen times with defaults, clamped, image preloaded during get ready', async () => {
+  const token = await createQuiz();
+  const defaults = (await c.get(`/quiz/${token}`)).body;
+  assert.deepEqual([defaults.getReadySeconds, defaults.revealSeconds, defaults.winnerSeconds], [5, 5, 4]);
+
+  const put = await c.put(`/quiz/${token}`, { title: 'Testquiz', getReadySeconds: 2, revealSeconds: 99, winnerSeconds: 3 });
+  assert.equal(put.status, 200, JSON.stringify(put.body));
+  await c.put(`/quiz/${token}`, { title: 'Testquiz', lightMode: true });
+  const quiz = (await c.get(`/quiz/${token}`)).body;
+  assert.deepEqual([quiz.getReadySeconds, quiz.revealSeconds, quiz.winnerSeconds], [2, 30, 3], 'clamped and kept');
+
+  const r = await c.post(`/quiz/${token}/question`, {
+    text: 'Vilken flagga?', type: 'single_choice', imageUrl: '/uploads/flagga.png',
+    answers: [{ text: 'Paris', isCorrect: true }, { text: 'Oslo', isCorrect: false }]
+  });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const s = await createSession(token);
+  const begun = Date.now();
+  const st = await c.post(`/session/${s.sessionId}/start`, {}, { 'x-admin-token': token });
+  assert.equal(st.status, 200);
+  const ready = (await c.get(`/session/${s.sessionId}/current`)).body;
+  assert.equal(ready.currentPhase, 'get_ready');
+  assert.equal(ready.getReadySeconds, 2);
+  assert.equal(ready.preloadImageUrl, '/uploads/flagga.png');
+  assert.equal(ready.question, null, 'question text still hidden');
+  const q = await waitFor(c, s.sessionId, x => x.currentPhase === 'question');
+  assert.ok(Date.now() - begun < 4000, 'short get ready honoured');
+  assert.equal(q.preloadImageUrl, null);
+});

@@ -15,6 +15,18 @@ import db from './db/db.js';
 export const GET_READY_MS = 5000;
 export const REVEAL_MS = 5000;
 export const ROUND_RESULT_MS = 4000;
+export const TIMING_LIMITS = { min: 2, max: 30 };
+
+// Per-quiz pacing with the defaults above as fallback.
+export function phaseTimes(quizId) {
+  const q = db.prepare('SELECT get_ready_seconds, reveal_seconds, winner_seconds FROM quiz WHERE id = ?').get(quizId) || {};
+  const ms = (v, fallback) => (Number.isInteger(v) && v >= TIMING_LIMITS.min && v <= TIMING_LIMITS.max ? v * 1000 : fallback);
+  return {
+    getReady: ms(q.get_ready_seconds, GET_READY_MS),
+    reveal: ms(q.reveal_seconds, REVEAL_MS),
+    winner: ms(q.winner_seconds, ROUND_RESULT_MS)
+  };
+}
 export const REVEAL_PHASES = ['correct_answer', 'round_result', 'scoreboard', 'waiting_for_continue'];
 
 let io = null;
@@ -144,7 +156,8 @@ export function buildSessionState(sessionId) {
     themeColor: quiz?.theme_color || null,
     lightMode: !!quiz?.light_mode,
     answerTimeSeconds: session.answer_time_seconds || null,
-    scoreboardPauseSeconds: session.scoreboard_pause_seconds || 10
+    scoreboardPauseSeconds: session.scoreboard_pause_seconds || 10,
+    getReadySeconds: phaseTimes(session.quiz_id).getReady / 1000
   };
 
   if (session.status === 'waiting') {
@@ -172,6 +185,9 @@ export function buildSessionState(sessionId) {
     answers: [],
     questionStartedAt: phase === 'question' ? session.question_started_at : null,
     getReadyStartedAt: phase === 'get_ready' ? session.question_started_at : null,
+    // Lets phones fetch the next image during the countdown, so a slow
+    // download does not eat into their (speed-scored) answer time.
+    preloadImageUrl: phase === 'get_ready' ? current?.image_url || null : null,
     answerCount: null,
     roundWinner: null,
     questionStats: null,
@@ -244,15 +260,17 @@ export function beginQuestion(sessionId, index) {
   if (index >= questions.length) return finishSession(sessionId);
 
   clearTimers(sessionId);
+  const { getReady } = phaseTimes(session.quiz_id);
   const startedAt = Math.floor(Date.now() / 1000);
   setPhase(sessionId, 'get_ready', { current_question_index: index, question_started_at: startedAt });
   emit(sessionId, 'session:get_ready', {
-    countdown: GET_READY_MS / 1000,
+    countdown: getReady / 1000,
     getReadyStartedAt: startedAt,
     nextQuestionIndex: index,
-    totalQuestions: questions.length
+    totalQuestions: questions.length,
+    preloadImageUrl: questions[index].image_url || null
   });
-  schedule(sessionId, () => showQuestion(sessionId, index), GET_READY_MS);
+  schedule(sessionId, () => showQuestion(sessionId, index), getReady);
 }
 
 export function showQuestion(sessionId, index) {
@@ -303,9 +321,10 @@ export function closeQuestion(sessionId) {
   const winner = getRoundWinner(question.id, sessionId);
   console.log(`[CLOSE] ${sessionId} Q${session.current_question_index + 1}: winner=${winner ? `${winner.name} ${winner.timeMs}ms` : 'none'}`);
 
+  const { reveal } = phaseTimes(session.quiz_id);
   setPhase(sessionId, 'correct_answer');
-  emit(sessionId, 'session:correct_answer', { ...stats, displayDuration: REVEAL_MS / 1000 });
-  schedule(sessionId, () => showRoundResult(sessionId), REVEAL_MS);
+  emit(sessionId, 'session:correct_answer', { ...stats, displayDuration: reveal / 1000 });
+  schedule(sessionId, () => showRoundResult(sessionId), reveal);
   return true;
 }
 
@@ -318,9 +337,10 @@ export function showRoundResult(sessionId) {
   const question = getQuestions(session.quiz_id)[session.current_question_index];
   const winner = question ? getRoundWinner(question.id, sessionId) : null;
   if (!winner) return afterRoundResult(sessionId);
+  const { winner: winnerMs } = phaseTimes(session.quiz_id);
   setPhase(sessionId, 'round_result');
-  emit(sessionId, 'session:round_result', { winner, displayDuration: ROUND_RESULT_MS / 1000 });
-  schedule(sessionId, () => afterRoundResult(sessionId), ROUND_RESULT_MS);
+  emit(sessionId, 'session:round_result', { winner, displayDuration: winnerMs / 1000 });
+  schedule(sessionId, () => afterRoundResult(sessionId), winnerMs);
 }
 
 // Scoreboard off: go straight on to the next question instead of showing standings.

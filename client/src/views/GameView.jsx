@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import useSessionSocket, { socket } from '../hooks/useSessionSocket.js';
 import { useCountdown, useGetReadyCountdown } from '../hooks/useCountdown.js';
 import { viewPhase } from '../lib/phase.js';
+import { preloadImage } from '../lib/preload.js';
 import { applyTheme } from '../theme.js';
 import Scoreboard from '../components/Scoreboard.jsx';
 
@@ -52,13 +53,14 @@ export default function GameView() {
   const [answerTimeSeconds, setAnswerTimeSeconds] = useState(null);
   const [questionStartedAt, setQuestionStartedAt] = useState(null);
   const [getReadyStartedAt, setGetReadyStartedAt] = useState(null);
+  const [getReadySeconds, setGetReadySeconds] = useState(5);
   const [roundWinner, setRoundWinner] = useState(null);
   const [questionWinner, setQuestionWinner] = useState(null);
   const [scoreboardHidden, setScoreboardHidden] = useState(false);
   const questionIdRef = useRef(null);
 
   const timeRemaining = useCountdown(questionStartedAt, answerTimeSeconds, phase === 'question');
-  const getReadyCountdown = useGetReadyCountdown(getReadyStartedAt, 5, phase === 'getReady');
+  const getReadyCountdown = useGetReadyCountdown(getReadyStartedAt, getReadySeconds, phase === 'getReady');
 
   // A question arrived (socket event or state). Only a *new* question clears
   // the player's in-progress answer.
@@ -71,6 +73,8 @@ export default function GameView() {
     setLiveCount(data.answerCount ? { count: data.answerCount.count, total: data.answerCount.total } : { count: 0, total: 0 });
     setQuestionStartedAt(data.questionStartedAt || null);
     if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
+    if (data.getReadySeconds) setGetReadySeconds(data.getReadySeconds);
+    preloadImage(data.preloadImageUrl);
     setRoundWinner(null);
     setPhase('question');
   }, []);
@@ -103,7 +107,7 @@ export default function GameView() {
     join: () => socket.emit('join:session', { sessionId, participantId, participantSecret }),
     handlers: {
       'session:state': applyState,
-      'session:get_ready': (d) => { setGetReadyStartedAt(d.getReadyStartedAt); setQuestionIndex(d.nextQuestionIndex); setTotalQuestions(d.totalQuestions); setPhase('getReady'); },
+      'session:get_ready': (d) => { preloadImage(d.preloadImageUrl); if (d.countdown) setGetReadySeconds(d.countdown); setGetReadyStartedAt(d.getReadyStartedAt); setQuestionIndex(d.nextQuestionIndex); setTotalQuestions(d.totalQuestions); setPhase('getReady'); },
       'session:question': showQuestion,
       'session:answer_count': (d) => setLiveCount({ count: d.count, total: d.total }),
       'session:correct_answer': () => setPhase('correctAnswer'),

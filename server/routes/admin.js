@@ -7,6 +7,7 @@ import { mkdirSync } from 'fs';
 import rateLimit from 'express-rate-limit';
 import db from '../db/db.js';
 import { str, hexColor, imageUrl, num, questionType, answerList } from '../validate.js';
+import { GET_READY_MS, REVEAL_MS, ROUND_RESULT_MS, TIMING_LIMITS } from '../engine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Same directory index.js serves as /uploads. Defaults to <server>/uploads
@@ -158,7 +159,9 @@ router.get('/quiz/:adminToken', (req, res) => {
   });
   res.json({ id: quiz.id, title: quiz.title, adminToken: quiz.admin_token, themeColor: quiz.theme_color,
     lightMode: !!quiz.light_mode, hideScoresUntilEnd: !!quiz.hide_scores_until_end, showScoreboard: quiz.show_scoreboard !== 0,
-    coverImageUrl: quiz.cover_image_url, coverText: quiz.cover_text, logoUrl: quiz.logo_url, createdAt: quiz.created_at, questions: questionsWithAnswers });
+    coverImageUrl: quiz.cover_image_url, coverText: quiz.cover_text, logoUrl: quiz.logo_url, createdAt: quiz.created_at,
+    getReadySeconds: quiz.get_ready_seconds ?? GET_READY_MS / 1000, revealSeconds: quiz.reveal_seconds ?? REVEAL_MS / 1000,
+    winnerSeconds: quiz.winner_seconds ?? ROUND_RESULT_MS / 1000, questions: questionsWithAnswers });
 });
 
 router.put('/quiz/:adminToken', (req, res) => {
@@ -175,7 +178,12 @@ router.put('/quiz/:adminToken', (req, res) => {
   // Cover fields are optional: left out keeps the stored value, null/'' clears it.
   const coverImage = req.body.coverImageUrl !== undefined ? imageUrl(req.body.coverImageUrl, 'coverImageUrl') : quiz.cover_image_url;
   const coverText = req.body.coverText !== undefined ? str(req.body.coverText, { field: 'coverText', max: 300 }) : quiz.cover_text;
-  db.prepare('UPDATE quiz SET title = ?, theme_color = ?, logo_url = ?, light_mode = ?, answer_time_seconds = ?, scoreboard_pause_seconds = ?, hide_scores_until_end = ?, show_scoreboard = ?, cover_image_url = ?, cover_text = ? WHERE id = ?').run(title, themeColor, logoUrl, lightMode ? 1 : 0, answerTime, scoreboardPause, hideScores, scoreboard, coverImage, coverText, quiz.id);
+  // Pacing between questions: left out keeps the stored value.
+  const pace = (v, stored) => (v !== undefined ? Math.max(TIMING_LIMITS.min, Math.min(TIMING_LIMITS.max, parseInt(v) || 5)) : stored);
+  const getReady = pace(req.body.getReadySeconds, quiz.get_ready_seconds);
+  const reveal = pace(req.body.revealSeconds, quiz.reveal_seconds);
+  const winner = pace(req.body.winnerSeconds, quiz.winner_seconds);
+  db.prepare('UPDATE quiz SET title = ?, theme_color = ?, logo_url = ?, light_mode = ?, answer_time_seconds = ?, scoreboard_pause_seconds = ?, hide_scores_until_end = ?, show_scoreboard = ?, cover_image_url = ?, cover_text = ?, get_ready_seconds = ?, reveal_seconds = ?, winner_seconds = ? WHERE id = ?').run(title, themeColor, logoUrl, lightMode ? 1 : 0, answerTime, scoreboardPause, hideScores, scoreboard, coverImage, coverText, getReady, reveal, winner, quiz.id);
   res.json({ ok: true });
 });
 

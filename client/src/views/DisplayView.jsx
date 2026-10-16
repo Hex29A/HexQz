@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import useSessionSocket, { socket } from '../hooks/useSessionSocket.js';
 import { useCountdown, useGetReadyCountdown } from '../hooks/useCountdown.js';
 import { viewPhase } from '../lib/phase.js';
+import { preloadImage } from '../lib/preload.js';
 import Scoreboard from '../components/Scoreboard.jsx';
 
 function MiniQR({ joinCode }) {
@@ -36,6 +37,7 @@ export default function DisplayView() {
   const [answerTimeSeconds, setAnswerTimeSeconds] = useState(null);
   const [questionStartedAt, setQuestionStartedAt] = useState(null);
   const [getReadyStartedAt, setGetReadyStartedAt] = useState(null);
+  const [getReadySeconds, setGetReadySeconds] = useState(5);
   const [answerCount, setAnswerCount] = useState({ count: 0, total: 0 });
   const [winner, setWinner] = useState(null);
   const [roundWinner, setRoundWinner] = useState(null);
@@ -48,7 +50,7 @@ export default function DisplayView() {
   const [cover, setCover] = useState({ imageUrl: null, text: null });
 
   const timeRemaining = useCountdown(questionStartedAt, answerTimeSeconds, phase === 'question');
-  const getReadyCountdown = useGetReadyCountdown(getReadyStartedAt, 5, phase === 'getReady');
+  const getReadyCountdown = useGetReadyCountdown(getReadyStartedAt, getReadySeconds, phase === 'getReady');
 
   const applyState = useCallback((data) => {
     if (!data || data.error) return;
@@ -59,6 +61,8 @@ export default function DisplayView() {
     setScoreboardHidden(!!data.scoreboardHidden);
     if (data.status === 'waiting') setCover({ imageUrl: data.coverImageUrl || null, text: data.coverText || null });
     if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
+    if (data.getReadySeconds) setGetReadySeconds(data.getReadySeconds);
+    preloadImage(data.preloadImageUrl);
     const view = viewPhase(data);
     if (view === 'finished' && data.scores?.length) setWinner(data.scores[0]);
     if (data.status === 'active') {
@@ -83,7 +87,7 @@ export default function DisplayView() {
     join: () => socket.emit('rejoin:session', { sessionId }),
     handlers: {
       'session:state': applyState,
-      'session:get_ready': (d) => { setGetReadyStartedAt(d.getReadyStartedAt); setQuestionIndex(d.nextQuestionIndex); setTotalQuestions(d.totalQuestions); setPhase('getReady'); },
+      'session:get_ready': (d) => { preloadImage(d.preloadImageUrl); if (d.countdown) setGetReadySeconds(d.countdown); setGetReadyStartedAt(d.getReadyStartedAt); setQuestionIndex(d.nextQuestionIndex); setTotalQuestions(d.totalQuestions); setPhase('getReady'); },
       'session:question': (d) => {
         setQuestion(d.question); setQuestionIndex(d.questionIndex); setTotalQuestions(d.totalQuestions);
         setAnswers(d.answers || []); setAnswerCount({ count: 0, total: 0 }); setRoundWinner(null);

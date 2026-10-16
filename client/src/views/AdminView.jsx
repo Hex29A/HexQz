@@ -213,6 +213,8 @@ export default function AdminView() {
         )}
       </div>
 
+      <PacingEditor quiz={quiz} saveQuiz={saveQuiz} />
+
       <CoverEditor quiz={quiz} saveQuiz={saveQuiz} />
 
       <div className="flex flex-col gap-4 mb-6">
@@ -677,6 +679,43 @@ function QuestionForm({ adminToken, question, onDone, onCancel }) {
 }
 
 // Cover shown on the display screen while players join, before the quiz starts.
+const PACING_FIELDS = [
+  { key: 'getReadySeconds', label: 'Get ready' },
+  { key: 'revealSeconds', label: 'Correct answer' },
+  { key: 'winnerSeconds', label: 'Round winner' }
+];
+
+function PacingEditor({ quiz, saveQuiz }) {
+  const [values, setValues] = useState(() => Object.fromEntries(PACING_FIELDS.map(f => [f.key, quiz[f.key] ?? 5])));
+  const save = (key) => {
+    const v = Math.max(2, Math.min(30, parseInt(values[key]) || 5));
+    setValues(vals => ({ ...vals, [key]: v }));
+    if (v !== quiz[key]) saveQuiz({ [key]: v });
+  };
+
+  return (
+    <div className="mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
+      <h2 className="font-semibold mb-1">Pacing</h2>
+      <p className="text-xs text-gray-400 mb-3">Seconds each screen stays up between questions (2–30). Shorter is snappier; leave some slack for slow phones.</p>
+      <div className="flex flex-wrap gap-4">
+        {PACING_FIELDS.map(f => (
+          <label key={f.key} className="flex items-center gap-2 text-sm text-gray-300">
+            {f.label}
+            <input
+              type="number" min={2} max={30}
+              value={values[f.key]}
+              onChange={(e) => setValues(vals => ({ ...vals, [f.key]: e.target.value }))}
+              onBlur={() => save(f.key)}
+              className="w-16 px-2 py-1 bg-gray-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+            s
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CoverEditor({ quiz, saveQuiz }) {
   const [text, setText] = useState(quiz.coverText || '');
   const [imageUrl, setImageUrl] = useState(quiz.coverImageUrl || '');
