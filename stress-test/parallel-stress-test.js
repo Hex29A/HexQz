@@ -698,8 +698,8 @@ async function main() {
       console.log('📺 SESSIONS READY - Start them manually:');
       console.log(`${'='.repeat(60)}\n`);
 
-      const publicUrl = BASE_URL.replace('http://quiz:3042', 'https://quiz.zikkan.com')
-                                .replace('http://nginx', 'https://quiz.zikkan.com')
+      const publicUrl = BASE_URL.replace('http://quiz:3042', 'https://quiz.example.com')
+                                .replace('http://nginx', 'https://quiz.example.com')
                                 .replace('http://localhost:3042', 'http://localhost');
 
       for (const runner of runners) {

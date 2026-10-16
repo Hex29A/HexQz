@@ -12,7 +12,7 @@
  * 
  * Examples:
  *   node stress-test.js --auto 50 http://nginx
- *   node stress-test.js ABC123 50 https://quiz.zikkan.com
+ *   node stress-test.js ABC123 50 https://quiz.example.com
  * 
  * Environment variables:
  *   ADMIN_SECRET - Required for --auto mode to create quiz
@@ -49,7 +49,7 @@ if (args[0] === '--auto') {
     console.error('  Manual mode: node stress-test.js <joinCode> <numPlayers> [baseUrl]');
     console.error('\nExamples:');
     console.error('  node stress-test.js --auto 50 http://nginx');
-    console.error('  node stress-test.js ABC123 50 https://quiz.zikkan.com');
+    console.error('  node stress-test.js ABC123 50 https://quiz.example.com');
     process.exit(1);
   }
   
@@ -461,8 +461,8 @@ async function main() {
   
   if (AUTO_MODE && adminToken) {
     // Extract public domain from BASE_URL
-    const publicUrl = BASE_URL.replace('http://quiz:3042', 'https://quiz.zikkan.com')
-                              .replace('http://nginx', 'https://quiz.zikkan.com')
+    const publicUrl = BASE_URL.replace('http://quiz:3042', 'https://quiz.example.com')
+                              .replace('http://nginx', 'https://quiz.example.com')
                               .replace('http://localhost:3042', 'http://localhost');
     
     console.log(`\n🎮 Host View (control panel):`);
