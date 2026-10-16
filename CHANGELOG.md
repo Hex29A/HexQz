@@ -4,6 +4,7 @@ Notable changes, newest first. Dates are deploy dates.
 
 ## 2026-10-16
 
+- **Stale round champion fix** — the phone and big screen cleared the "Question Champion" box only when a new champion arrived, so after a question nobody got right the previous question's winner showed again and looked like a correct answer. A new question now clears it, and the round winner event sets it.
 - **App icon** — gold enamel hexagon with a question mark, matching the Hex29A app family: `favicon.svg`, 192/512 PNG icons and an opaque 180 px `apple-touch-icon.png` for iOS home screens.
 - **Lobby cover** — the players' lobby shows the quiz cover image and text and greets the player by name.
 - **Image shrinking** — admin uploads are resized in the browser to at most 1920 px and saved as WebP (keeps transparency for logos). A 2.6 MB photo becomes about 200 kB, which matters on crowded party wifi.

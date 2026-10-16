@@ -90,14 +90,14 @@ export default function DisplayView() {
       'session:get_ready': (d) => { preloadImage(d.preloadImageUrl); if (d.countdown) setGetReadySeconds(d.countdown); setGetReadyStartedAt(d.getReadyStartedAt); setQuestionIndex(d.nextQuestionIndex); setTotalQuestions(d.totalQuestions); setPhase('getReady'); },
       'session:question': (d) => {
         setQuestion(d.question); setQuestionIndex(d.questionIndex); setTotalQuestions(d.totalQuestions);
-        setAnswers(d.answers || []); setAnswerCount({ count: 0, total: 0 }); setRoundWinner(null);
+        setAnswers(d.answers || []); setAnswerCount({ count: 0, total: 0 }); setRoundWinner(null); setQuestionWinner(null);
         setQuestionStartedAt(d.questionStartedAt || null);
         if (d.answerTimeSeconds !== undefined) setAnswerTimeSeconds(d.answerTimeSeconds);
         setPhase('question');
       },
       'session:answer_count': (d) => setAnswerCount({ count: d.count, total: d.total }),
       'session:correct_answer': (d) => { setCorrectAnswerQuestion(d.question); setCorrectAnswers(d.correctAnswers || []); setPhase('correctAnswer'); },
-      'session:round_result': (d) => { setRoundWinner(d.winner); setPhase('roundResult'); },
+      'session:round_result': (d) => { setRoundWinner(d.winner); setQuestionWinner(d.winner || null); setPhase('roundResult'); },
       'session:scores': (d) => { setScores(d.scores || []); setQuestionWinner(d.roundWinner || null); setPhase('scoreboard'); },
       'session:waiting_for_continue': (d) => {
         if (d?.answerCount) setAnswerCount({ count: d.answerCount.count, total: d.answerCount.total });

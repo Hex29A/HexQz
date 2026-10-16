@@ -75,7 +75,9 @@ export default function GameView() {
     if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
     if (data.getReadySeconds) setGetReadySeconds(data.getReadySeconds);
     preloadImage(data.preloadImageUrl);
-    setRoundWinner(null);
+    // A new question clears the previous round's champion, otherwise a
+    // question nobody got right showed the last winner again.
+    setRoundWinner(null); setQuestionWinner(null);
     setPhase('question');
   }, []);
 
@@ -111,7 +113,7 @@ export default function GameView() {
       'session:question': showQuestion,
       'session:answer_count': (d) => setLiveCount({ count: d.count, total: d.total }),
       'session:correct_answer': () => setPhase('correctAnswer'),
-      'session:round_result': (d) => { setRoundWinner(d.winner); setPhase('roundResult'); },
+      'session:round_result': (d) => { setRoundWinner(d.winner); setQuestionWinner(d.winner || null); setPhase('roundResult'); },
       'session:scores': (d) => { setScores(d.scores || []); setQuestionWinner(d.roundWinner || null); setPhase('scoreboard'); },
       'session:waiting_for_continue': (d) => { if (d?.scoreboardHidden) setScoreboardHidden(true); setPhase(d?.scoresHidden ? 'locked' : 'scoreboard'); },
       'session:finished': () => navigate(`/results/${sessionId}`),
