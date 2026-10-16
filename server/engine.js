@@ -14,7 +14,7 @@ import db from './db/db.js';
 
 export const GET_READY_MS = 5000;
 export const REVEAL_MS = 5000;
-export const ROUND_RESULT_MS = 10000;
+export const ROUND_RESULT_MS = 4000;
 export const REVEAL_PHASES = ['correct_answer', 'round_result', 'scoreboard', 'waiting_for_continue'];
 
 let io = null;
