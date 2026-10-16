@@ -1,3 +1,5 @@
+<p align="center"><img src="client/public/icon-512.png" width="128" alt="hexqz icon"></p>
+
 # hexqz
 
 Real-time quiz platform. Create quizzes, control the pace, players join via QR code on their phones. No accounts needed.

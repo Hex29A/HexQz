@@ -4,6 +4,7 @@ Notable changes, newest first. Dates are deploy dates.
 
 ## 2026-10-16
 
+- **App icon** — gold enamel hexagon with a question mark, matching the Hex29A app family: `favicon.svg`, 192/512 PNG icons and an opaque 180 px `apple-touch-icon.png` for iOS home screens.
 - **Lobby cover** — the players' lobby shows the quiz cover image and text and greets the player by name.
 - **Image shrinking** — admin uploads are resized in the browser to at most 1920 px and saved as WebP (keeps transparency for logos). A 2.6 MB photo becomes about 200 kB, which matters on crowded party wifi.
 - **Upload fix** — uploads from a quiz admin page send the quiz admin token, so they no longer require the admin login cookie.
