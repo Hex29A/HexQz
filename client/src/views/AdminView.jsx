@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { rememberAdminToken } from '../lib/adminToken.js';
+import { shrinkImage } from '../lib/shrinkImage.js';
 
 // Number inputs keep the raw text while typing; clamp only on blur/submit,
 // otherwise clearing the field to type a new value snaps it to the min/fallback.
@@ -747,6 +748,8 @@ function CoverEditor({ quiz, saveQuiz }) {
 }
 
 function ImageUpload({ imageUrl, setImageUrl, uploading, setUploading }) {
+  // The quiz admin token authorizes uploads even without the admin login cookie.
+  const { adminToken } = useParams();
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState('');
 
@@ -755,9 +758,9 @@ function ImageUpload({ imageUrl, setImageUrl, uploading, setUploading }) {
     setError('');
     setUploading(true);
     const formData = new FormData();
-    formData.append('image', file);
+    formData.append('image', await shrinkImage(file));
     try {
-      const res = await fetch('/api/upload', { method: 'POST', body: formData });
+      const res = await fetch('/api/upload', { method: 'POST', body: formData, headers: adminToken ? { 'x-admin-token': adminToken } : {} });
       const data = await res.json();
       if (res.ok) {
         setImageUrl(data.url);

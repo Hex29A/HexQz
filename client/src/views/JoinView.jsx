@@ -67,6 +67,7 @@ export default function JoinView() {
       const { participantId, participantSecret, sessionId } = await res.json();
       localStorage.setItem(`participant:${sessionId}`, participantId);
       localStorage.setItem(`participantSecret:${sessionId}`, participantSecret);
+      localStorage.setItem(`participantName:${sessionId}`, displayName.trim());
       navigate(`/lobby/${sessionId}`);
     } else {
       const err = await res.json();
