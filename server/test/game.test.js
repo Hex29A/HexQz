@@ -410,3 +410,74 @@ test('hide scores off (default): round result still shown', async () => {
   const adv = await c.post(`/session/${s.sessionId}/advance-phase`, {}, { 'x-admin-token': token });
   assert.equal(adv.body.phase, 'round_result');
 });
+
+test('scoreboard off: per-question splash runs, standings never shown mid-game', async () => {
+  const token = await createQuiz();
+  const put = await c.put(`/quiz/${token}`, { title: 'Testquiz', showScoreboard: false });
+  assert.equal(put.status, 200, JSON.stringify(put.body));
+  // a PUT without the field (e.g. the theme toggle) keeps the setting
+  await c.put(`/quiz/${token}`, { title: 'Testquiz', lightMode: true });
+  assert.equal((await c.get(`/quiz/${token}`)).body.showScoreboard, false);
+
+  const q1 = await addSingleChoice(token);
+  const q2 = await addSingleChoice(token);
+  const s = await createSession(token);
+  const p = await register(s.joinCode, 'Ledare');
+  const host = { 'x-admin-token': token };
+
+  const state = await start(s.sessionId, token);
+  assert.equal(state.scoreboardHidden, true);
+  assert.deepEqual(state.scores, [], 'standings not exposed mid-game');
+  await answer(p, q1, { answerId: state.answers.find(a => a.text === 'Paris').id });
+  const reveal = await waitFor(c, s.sessionId, st => st.currentPhase === 'correct_answer');
+  assert.ok(reveal.questionStats, 'the correct-answer splash still runs');
+  assert.deepEqual(reveal.scores, []);
+
+  // skipping through the splash lands on waiting_for_continue, never on the scoreboard
+  await c.post(`/session/${s.sessionId}/advance-phase`, {}, host);
+  const after = await waitFor(c, s.sessionId, st => st.currentPhase !== 'correct_answer');
+  if (after.currentPhase === 'round_result') {
+    assert.ok(after.roundWinner, 'round winner splash kept');
+    await c.post(`/session/${s.sessionId}/advance-phase`, {}, host);
+  }
+  const waiting = await waitFor(c, s.sessionId, st => st.currentPhase !== 'round_result');
+  assert.equal(waiting.currentPhase, 'waiting_for_continue');
+  assert.deepEqual(waiting.scores, []);
+  assert.equal(waiting.scoresHidden, false, 'not the locked hidden mode');
+
+  await c.post(`/session/${s.sessionId}/continue`, {}, host);
+  const second = await waitFor(c, s.sessionId, st => st.currentPhase === 'question' && st.question.id === q2);
+  await answer(p, q2, { answerId: second.answers.find(a => a.text === 'Paris').id });
+  await waitFor(c, s.sessionId, st => st.currentPhase === 'correct_answer');
+  await c.post(`/session/${s.sessionId}/advance-phase`, {}, host);
+  const done = await waitFor(c, s.sessionId, st => st.status === 'finished' || st.currentPhase === 'round_result');
+  if (done.status !== 'finished') await c.post(`/session/${s.sessionId}/advance-phase`, {}, host);
+  const finished = await waitFor(c, s.sessionId, st => st.status === 'finished');
+  assert.equal(finished.scoreboardHidden, false);
+  assert.ok(finished.scores[0].score > 0, 'final standings shown at the end');
+});
+
+test('quiz cover: stored, shown in the waiting state, kept and cleared', async () => {
+  const token = await createQuiz();
+  assert.equal((await c.get(`/quiz/${token}`)).body.showScoreboard, true, 'scoreboard on by default');
+  const put = await c.put(`/quiz/${token}`, { title: 'Testquiz', coverImageUrl: '/uploads/cover.png', coverText: 'Grattis Cecilia!' });
+  assert.equal(put.status, 200, JSON.stringify(put.body));
+  await c.put(`/quiz/${token}`, { title: 'Testquiz', lightMode: true });
+  const quiz = (await c.get(`/quiz/${token}`)).body;
+  assert.equal(quiz.coverImageUrl, '/uploads/cover.png');
+  assert.equal(quiz.coverText, 'Grattis Cecilia!');
+
+  const bad = await c.put(`/quiz/${token}`, { title: 'Testquiz', coverImageUrl: 'javascript:alert(1)' });
+  assert.equal(bad.status, 400);
+
+  await addSingleChoice(token);
+  const s = await createSession(token);
+  const waiting = (await c.get(`/session/${s.sessionId}/current`)).body;
+  assert.equal(waiting.coverImageUrl, '/uploads/cover.png');
+  assert.equal(waiting.coverText, 'Grattis Cecilia!');
+
+  await c.put(`/quiz/${token}`, { title: 'Testquiz', coverImageUrl: null, coverText: '' });
+  const cleared = (await c.get(`/quiz/${token}`)).body;
+  assert.equal(cleared.coverImageUrl, null);
+  assert.ok(!cleared.coverText);
+});

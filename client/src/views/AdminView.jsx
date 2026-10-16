@@ -131,6 +131,19 @@ export default function AdminView() {
     setQuiz({ ...quiz, hideScoresUntilEnd: hide });
   };
 
+  // Partial update: the server keeps every optional field that is left out.
+  const saveQuiz = async (patch) => {
+    const res = await fetch(`/api/quiz/${adminToken}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: quiz.title, themeColor: quiz.themeColor, lightMode: quiz.lightMode, logoUrl: quiz.logoUrl, ...patch })
+    });
+    if (!res.ok) { alert('Save failed: ' + ((await res.json().catch(() => ({}))).error || res.status)); return false; }
+    setQuiz(q => ({ ...q, ...patch }));
+    return true;
+  };
+
+  const toggleScoreboard = () => saveQuiz({ showScoreboard: !quiz.showScoreboard });
 
   const deleteSession = async (sessionId) => {
     if (!confirm('Delete this session and all its data?')) return;
@@ -192,7 +205,15 @@ export default function AdminView() {
             {quiz.hideScoresUntilEnd ? '🙈 Scores hidden until end' : '🏆 Scores after each question'}
           </button>
         </div>
+        {!quiz.hideScoresUntilEnd && (
+          <label className="flex items-center gap-2 mt-3 text-sm text-gray-300 cursor-pointer" title="Off: the splash after each question still runs, but the running scoreboard is skipped so nobody sees who leads. Standings are shown at the end.">
+            <input type="checkbox" checked={quiz.showScoreboard} onChange={toggleScoreboard} className="w-4 h-4" />
+            Show scoreboard between questions
+          </label>
+        )}
       </div>
+
+      <CoverEditor quiz={quiz} saveQuiz={saveQuiz} />
 
       <div className="flex flex-col gap-4 mb-6">
         {quiz.questions.map((q, idx) => (
@@ -651,6 +672,37 @@ function QuestionForm({ adminToken, question, onDone, onCancel }) {
           <button type="submit" className="flex-1 py-2 bg-accent rounded-lg hover:opacity-90 font-semibold transition">Save</button>
         </div>
       </form>
+    </div>
+  );
+}
+
+// Cover shown on the display screen while players join, before the quiz starts.
+function CoverEditor({ quiz, saveQuiz }) {
+  const [text, setText] = useState(quiz.coverText || '');
+  const [imageUrl, setImageUrl] = useState(quiz.coverImageUrl || '');
+  const [uploading, setUploading] = useState(false);
+  const dirty = text !== (quiz.coverText || '') || imageUrl !== (quiz.coverImageUrl || '');
+
+  return (
+    <div className="mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
+      <h2 className="font-semibold mb-1">Cover</h2>
+      <p className="text-xs text-gray-400 mb-3">Shown on the display screen next to the QR code until the quiz starts.</p>
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Cover text (optional)"
+        maxLength={300}
+        className="w-full px-3 py-2 mb-3 bg-gray-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+      />
+      <ImageUpload imageUrl={imageUrl} setImageUrl={setImageUrl} uploading={uploading} setUploading={setUploading} />
+      <button
+        onClick={() => saveQuiz({ coverText: text.trim() || null, coverImageUrl: imageUrl || null })}
+        disabled={!dirty || uploading}
+        className="mt-3 px-4 py-2 bg-accent hover:opacity-90 disabled:opacity-40 rounded-lg text-sm font-semibold transition"
+      >
+        Save cover
+      </button>
     </div>
   );
 }

@@ -44,6 +44,8 @@ export default function DisplayView() {
   const [correctAnswers, setCorrectAnswers] = useState([]);
   const [correctAnswerQuestion, setCorrectAnswerQuestion] = useState(null);
   const [answers, setAnswers] = useState([]);
+  const [scoreboardHidden, setScoreboardHidden] = useState(false);
+  const [cover, setCover] = useState({ imageUrl: null, text: null });
 
   const timeRemaining = useCountdown(questionStartedAt, answerTimeSeconds, phase === 'question');
   const getReadyCountdown = useGetReadyCountdown(getReadyStartedAt, 5, phase === 'getReady');
@@ -54,6 +56,8 @@ export default function DisplayView() {
     setScores(data.scores || []);
     setSessionName(data.sessionName || '');
     setTotalQuestions(data.totalQuestions || 0);
+    setScoreboardHidden(!!data.scoreboardHidden);
+    if (data.status === 'waiting') setCover({ imageUrl: data.coverImageUrl || null, text: data.coverText || null });
     if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
     const view = viewPhase(data);
     if (view === 'finished' && data.scores?.length) setWinner(data.scores[0]);
@@ -93,6 +97,7 @@ export default function DisplayView() {
       'session:scores': (d) => { setScores(d.scores || []); setQuestionWinner(d.roundWinner || null); setPhase('scoreboard'); },
       'session:waiting_for_continue': (d) => {
         if (d?.answerCount) setAnswerCount({ count: d.answerCount.count, total: d.answerCount.total });
+        if (d?.scoreboardHidden) setScoreboardHidden(true);
         setPhase(d?.scoresHidden ? 'locked' : 'scoreboard');
       },
       'session:finished': (d) => { setPhase('finished'); setScores(d.results || []); if (d.results?.length) setWinner(d.results[0]); },
@@ -114,7 +119,38 @@ export default function DisplayView() {
   if (phase === 'waiting') {
     const joinUrl = typeof window !== 'undefined' ? `${window.location.origin}/join` : '';
     const qrUrl = joinCode ? `${joinUrl}?code=${joinCode}` : joinUrl;
-    
+
+    // Cover set: the image gets most of the screen, uncropped and with nothing
+    // drawn over it; the join details sit in their own column beside it
+    // (stacked below on a portrait screen).
+    if (cover.imageUrl || cover.text) {
+      return (
+        <div className="flex flex-col landscape:flex-row min-h-screen bg-gradient-to-br from-bg via-bg-secondary to-bg">
+          <a
+            href={`/host/${sessionId}`}
+            className="absolute top-4 right-4 z-10 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-semibold transition border border-gray-700"
+          >
+            🎮 Host Controls
+          </a>
+          <div className="flex-1 landscape:basis-2/3 flex flex-col items-center justify-center p-8 min-h-0">
+            {cover.text && <h1 className="text-6xl font-bold text-center mb-6 text-accent">{cover.text}</h1>}
+            {cover.imageUrl && (
+              <img src={cover.imageUrl} alt="" className="max-w-full max-h-[80vh] landscape:max-h-[85vh] object-contain rounded-2xl shadow-2xl" />
+            )}
+          </div>
+          <div className="landscape:basis-1/3 flex flex-col items-center justify-center p-8 gap-4 bg-black/20 border-t landscape:border-t-0 landscape:border-l border-white/10">
+            {sessionName && <h2 className="text-4xl font-bold text-accent text-center">{sessionName}</h2>}
+            {joinCode && (
+              <QRCodeSVG value={qrUrl} size={240} bgColor="transparent" fgColor="currentColor" className="text-white" />
+            )}
+            <div className="text-7xl font-bold tracking-wider text-accent">{joinCode}</div>
+            <p className="text-2xl font-mono font-semibold text-white">{window.location.host}/join</p>
+            <p className="text-lg text-text-secondary text-center">Scan QR code or enter code to join</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col items-center justify-center min-h-screen p-8 bg-gradient-to-br from-bg via-bg-secondary to-bg">
         <a 
@@ -330,11 +366,19 @@ export default function DisplayView() {
           </div>
         )}
 
-        <h2 className="text-5xl font-bold text-center mb-8 animate-pulse">Scoreboard</h2>
-        
-        <div className="max-w-4xl mx-auto w-full">
-          <Scoreboard scores={scores} maxVisible={10} displayMode={true} />
-        </div>
+        {scoreboardHidden ? (
+          // Scoreboard turned off for this quiz: standings stay a surprise until the end.
+          <h2 className="text-5xl font-bold text-center animate-pulse">
+            {questionIndex + 1 >= totalQuestions ? 'Final results coming up...' : 'Next question coming up...'}
+          </h2>
+        ) : (
+          <>
+            <h2 className="text-5xl font-bold text-center mb-8 animate-pulse">Scoreboard</h2>
+            <div className="max-w-4xl mx-auto w-full">
+              <Scoreboard scores={scores} maxVisible={10} displayMode={true} />
+            </div>
+          </>
+        )}
       </div>
     );
   }

@@ -54,6 +54,7 @@ export default function GameView() {
   const [getReadyStartedAt, setGetReadyStartedAt] = useState(null);
   const [roundWinner, setRoundWinner] = useState(null);
   const [questionWinner, setQuestionWinner] = useState(null);
+  const [scoreboardHidden, setScoreboardHidden] = useState(false);
   const questionIdRef = useRef(null);
 
   const timeRemaining = useCountdown(questionStartedAt, answerTimeSeconds, phase === 'question');
@@ -81,6 +82,7 @@ export default function GameView() {
     if (data.status === 'finished') { navigate(`/results/${sessionId}`); return; }
     if (data.status === 'waiting') { navigate(`/lobby/${sessionId}`); return; }
     setTotalQuestions(data.totalQuestions); setScores(data.scores || []);
+    setScoreboardHidden(!!data.scoreboardHidden);
     if (data.answerTimeSeconds !== undefined) setAnswerTimeSeconds(data.answerTimeSeconds);
     const view = viewPhase(data);
     if (view === 'getReady') {
@@ -107,7 +109,7 @@ export default function GameView() {
       'session:correct_answer': () => setPhase('correctAnswer'),
       'session:round_result': (d) => { setRoundWinner(d.winner); setPhase('roundResult'); },
       'session:scores': (d) => { setScores(d.scores || []); setQuestionWinner(d.roundWinner || null); setPhase('scoreboard'); },
-      'session:waiting_for_continue': (d) => setPhase(d?.scoresHidden ? 'locked' : 'scoreboard'),
+      'session:waiting_for_continue': (d) => { if (d?.scoreboardHidden) setScoreboardHidden(true); setPhase(d?.scoresHidden ? 'locked' : 'scoreboard'); },
       'session:finished': () => navigate(`/results/${sessionId}`),
       'session:reset': () => {
         localStorage.removeItem(`participant:${sessionId}`);
@@ -203,8 +205,12 @@ export default function GameView() {
           </div>
         </div>
       )}
-      <h2 className="text-2xl font-bold text-center mb-6">Scoreboard</h2>
-      <Scoreboard scores={scores} maxVisible={10} />
+      {!scoreboardHidden && (
+        <>
+          <h2 className="text-2xl font-bold text-center mb-6">Scoreboard</h2>
+          <Scoreboard scores={scores} maxVisible={10} />
+        </>
+      )}
       <p className="text-center text-text-secondary mt-6 text-sm">
         {questionIndex + 1 >= totalQuestions ? 'Final results coming up...' : 'Next question coming up...'}
       </p>

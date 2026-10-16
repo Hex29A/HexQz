@@ -126,17 +126,21 @@ export function questionStats(question, sessionId) {
 export function buildSessionState(sessionId) {
   const session = loadSession(sessionId);
   if (!session) return null;
-  const quiz = db.prepare('SELECT theme_color, light_mode, hide_scores_until_end FROM quiz WHERE id = ?').get(session.quiz_id);
+  const quiz = db.prepare('SELECT theme_color, light_mode, hide_scores_until_end, show_scoreboard, cover_image_url, cover_text FROM quiz WHERE id = ?').get(session.quiz_id);
   const questions = getQuestions(session.quiz_id);
   // Hidden standings stay hidden in the polled state too, not just in the UI.
   const hidden = !!quiz?.hide_scores_until_end && session.status === 'active';
+  // Scoreboard off: the per-question splash still runs, but the running
+  // standings are never sent mid-game, so nobody can see who leads.
+  const noScoreboard = quiz?.show_scoreboard === 0 && session.status === 'active';
   const base = {
     status: session.status,
     joinCode: session.join_code,
     sessionName: session.session_name,
     totalQuestions: questions.length,
-    scores: hidden ? [] : getSessionScores(sessionId),
+    scores: hidden || noScoreboard ? [] : getSessionScores(sessionId),
     scoresHidden: hidden,
+    scoreboardHidden: noScoreboard,
     themeColor: quiz?.theme_color || null,
     lightMode: !!quiz?.light_mode,
     answerTimeSeconds: session.answer_time_seconds || null,
@@ -145,7 +149,7 @@ export function buildSessionState(sessionId) {
 
   if (session.status === 'waiting') {
     const participants = db.prepare('SELECT display_name, team_name FROM participant WHERE session_id = ?').all(sessionId);
-    return { ...base, questionIndex: 0, participants: participants.map(p => ({ displayName: p.display_name, teamName: p.team_name })) };
+    return { ...base, questionIndex: 0, coverImageUrl: quiz?.cover_image_url || null, coverText: quiz?.cover_text || null, participants: participants.map(p => ({ displayName: p.display_name, teamName: p.team_name })) };
   }
 
   if (session.status === 'finished') {
@@ -313,10 +317,21 @@ export function showRoundResult(sessionId) {
   if (scoresHidden(session)) return nextAfterResults(sessionId, session);
   const question = getQuestions(session.quiz_id)[session.current_question_index];
   const winner = question ? getRoundWinner(question.id, sessionId) : null;
-  if (!winner) return showScoreboard(sessionId);
+  if (!winner) return afterRoundResult(sessionId);
   setPhase(sessionId, 'round_result');
   emit(sessionId, 'session:round_result', { winner, displayDuration: ROUND_RESULT_MS / 1000 });
-  schedule(sessionId, () => showScoreboard(sessionId), ROUND_RESULT_MS);
+  schedule(sessionId, () => afterRoundResult(sessionId), ROUND_RESULT_MS);
+}
+
+// Scoreboard off: go straight on to the next question instead of showing standings.
+export function afterRoundResult(sessionId) {
+  const session = activeSession(sessionId, ['correct_answer', 'round_result']);
+  if (!session) return;
+  if (!scoreboardShown(session)) {
+    clearTimers(sessionId);
+    return nextAfterResults(sessionId, session);
+  }
+  showScoreboard(sessionId);
 }
 
 export function showScoreboard(sessionId) {
@@ -347,6 +362,11 @@ function scoresHidden(session) {
   return !!quiz?.hide_scores_until_end;
 }
 
+function scoreboardShown(session) {
+  const quiz = db.prepare('SELECT show_scoreboard FROM quiz WHERE id = ?').get(session.quiz_id);
+  return quiz?.show_scoreboard !== 0;
+}
+
 function nextAfterResults(sessionId, session) {
   const questions = getQuestions(session.quiz_id);
   const index = session.current_question_index;
@@ -359,7 +379,7 @@ function nextAfterResults(sessionId, session) {
     nextQuestion: publicQuestion(questions[index + 1]),
     ...(hidden
       ? { scoresHidden: true, answerCount: getAnswerCount(question.id, sessionId) }
-      : { questionStats: questionStats(question, sessionId) })
+      : { questionStats: questionStats(question, sessionId), ...(scoreboardShown(session) ? {} : { scoreboardHidden: true }) })
   });
 }
 
@@ -380,7 +400,7 @@ export function advancePhase(sessionId) {
   switch (session.current_phase) {
     case 'question': closeQuestion(sessionId); break;
     case 'correct_answer': showRoundResult(sessionId); break;
-    case 'round_result': showScoreboard(sessionId); break;
+    case 'round_result': afterRoundResult(sessionId); break;
     case 'scoreboard': afterScoreboard(sessionId); break;
     case 'waiting_for_continue': beginQuestion(sessionId, session.current_question_index + 1); break;
     default: return 'Nothing to advance';
@@ -461,7 +481,7 @@ export function resumeActiveSessions() {
         showRoundResult(s.id);
         break;
       case 'round_result':
-        showScoreboard(s.id);
+        afterRoundResult(s.id);
         break;
       case 'scoreboard':
         afterScoreboard(s.id);
