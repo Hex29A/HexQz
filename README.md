@@ -9,15 +9,19 @@ Real-time quiz platform. Create quizzes, control the pace, players join via QR c
 - **QR code join** — participants scan QR and go straight to name entry (no manual code needed)
 - **Multiple question types** — single/multiple choice, true/false, free text, numeric, estimation, multi-part
 - **Team support** — optional team names for group play
-- **Live scoreboard** — animated scoreboard between questions with round winner highlight and medals
+- **Live scoreboard** — animated scoreboard between questions with round winner highlight and medals; can be turned off per quiz so standings stay secret until the end
 - **Display View** — dedicated projector/big-screen view at `/display/:sessionId` for showing questions and scores
-- **Get Ready countdown** — 5-second countdown before each question
+- **Get Ready countdown** — countdown before each question (5 s by default, configurable per quiz); the next question's image is preloaded on phones during it
+- **Configurable pacing** — per-quiz seconds for the get ready, correct answer and round winner screens
+- **One-tap answers** — single choice and true/false send on tap; tapping another option changes the answer while time remains
+- **Quiz cover** — optional image and text shown on the big screen next to the join QR code, and in the players' lobby
 - **Timer bar** — visual countdown in player and display views
 - **Early close** — question closes immediately when all players have answered
 - **Expandable results** — tap any player on the results page to see their answers per question (correct/wrong/points)
 - **Self-healing connections** — survives WiFi drops, backgrounded tabs, network switches
 - **Themed quizzes** — 10 preset themes with dark/light mode, or custom accent color
 - **Per-quiz branding** — custom colors and logos per quiz
+- **Lightweight images** — uploads are resized in the browser (max 1920 px, WebP) so guests on party wifi load them fast
 - **Session naming** — optional name when creating sessions
 - **Session history** — view past results, export as CSV
 - **Multi-quiz** — run multiple quizzes simultaneously
@@ -91,14 +95,31 @@ To update: `git pull && docker compose up -d --build` in the stack directory.
 1. Admin opens `/admin`, logs in, creates a quiz with questions
 2. Admin starts a session → gets a join code and QR code
 3. Participants scan QR or enter the 6-character code at the root URL
-4. They enter a display name (and optional team) → land in the lobby
-5. Admin clicks "Start" → "Get Ready!" countdown appears for 5 seconds
+4. They enter a display name (and optional team) → land in the lobby, which shows the quiz cover
+5. Admin clicks "Start" → "Get Ready!" countdown (phones preload the question image meanwhile)
 6. Question appears on all screens with a timer bar counting down
 7. Players answer → points awarded based on speed (faster = more points)
 8. After time expires (or all players answer), correct answer is revealed
-9. Round result shows the round winner, then the live scoreboard with medals
+9. Round result shows the round winner, then the live scoreboard with medals (skipped if the quiz has the scoreboard turned off)
 10. Admin clicks "Continue" (or auto-mode advances automatically) → next question
 11. After the last question, the final results screen shows with winner animation
+
+## Quiz Settings
+
+Set per quiz on its admin page (`/admin/:adminToken`):
+
+| Setting | Default | Effect |
+|---|---|---|
+| Scores after each question / hidden until end | after each | Hidden: no reveal, round winner or scoreboard until the final results |
+| Show scoreboard between questions | on | Off: correct answer and round winner still show, the running standings do not |
+| Pacing: get ready / correct answer / round winner | 5 / 5 / 4 s | How long each screen stays up between questions (2–30 s) |
+| Cover | none | Image and text on the display's waiting screen and in the players' lobby |
+
+Answer time and auto-advance are chosen per session when it is created.
+
+### Scoring
+
+Response time is measured on the server, from the moment the question is sent until the answer arrives. Points fall linearly from 1000 to 0 over the answer time, so on a 10-second question one second of delay costs 100 points. Changing an answer re-times it. Question images are preloaded during the get ready countdown so a slow download does not count against the player.
 
 ## Configuration
 
@@ -115,9 +136,9 @@ To update: `git pull && docker compose up -d --build` in the stack directory.
 
 | Type | Description |
 |---|---|
-| Single Choice | Tap one answer (A/B/C/D). Points based on speed. |
+| Single Choice | Tap one answer (A/B/C/D); it is sent immediately and can be changed by tapping another. Points based on speed. |
 | Multiple Choice | Select multiple answers + submit. Points based on speed if all correct. |
-| True / False | Two buttons. Points based on speed if correct. |
+| True / False | Two buttons, sent on tap like single choice. Points based on speed if correct. |
 | Free Text | Text input, auto-matched case-insensitively against accepted answers. |
 | Numeric | Number input, correct if within ±tolerance. |
 | Estimation | Number input, ranked by proximity to correct value. Top scores by closeness. |
