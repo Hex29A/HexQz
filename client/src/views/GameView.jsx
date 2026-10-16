@@ -131,11 +131,17 @@ export default function GameView() {
     return () => clearInterval(timer);
   }, [sessionId, applyState]);
 
-  const submitAnswer = async () => {
+  // Single-answer questions send on tap: the answer clock scores speed, so a
+  // separate Submit tap only costs time. Tapping another option re-answers.
+  const oneTap = question?.type === 'single_choice' || question?.type === 'true_false';
+  const answerClosed = phase !== 'question' || (timeRemaining !== null && timeRemaining <= 0);
+
+  const submitAnswer = async (tappedId) => {
     const body = { participantId, participantSecret, questionId: question.id };
     if (question.type === 'single_choice' || question.type === 'true_false') {
-      if (!selectedAnswer) return;
-      body.answerId = selectedAnswer;
+      const id = tappedId ?? selectedAnswer;
+      if (!id) return;
+      body.answerId = id;
     } else if (question.type === 'multiple_choice') {
       if (!selectedAnswer || selectedAnswer.length === 0) return;
       body.answerId = selectedAnswer;
@@ -148,7 +154,7 @@ export default function GameView() {
     }
     try {
       const res = await fetch('/api/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      if (res.ok) setSubmitted(true);
+      if (res.ok) { setSubmitted(true); setError(''); }
       else { const err = await res.json(); setError(err.error || 'Failed to submit'); }
     } catch { setError('Connection error. Tap to retry.'); }
   };
@@ -247,7 +253,7 @@ export default function GameView() {
       <div className="flex-1 flex flex-col justify-center">
         <h2 className="text-xl font-bold text-center mb-2">{question.text}</h2>
         {question.imageUrl && <img src={question.imageUrl} alt="" className="max-h-48 mx-auto rounded-lg mb-4" />}
-        {submitted ? (
+        {submitted && !oneTap ? (
           <div className="text-center py-8">
             <div className="text-4xl mb-2">✓</div>
             <p className="text-lg text-text-secondary mb-2">Answer received!</p>
@@ -262,9 +268,10 @@ export default function GameView() {
                   const isSelected = question.type === 'multiple_choice' ? (selectedAnswer || []).includes(a.id) : selectedAnswer === a.id;
                   return (
                     <button key={a.id}
+                      disabled={oneTap && answerClosed}
                       onClick={() => {
                         if (question.type === 'multiple_choice') setSelectedAnswer(prev => { const arr = prev || []; return arr.includes(a.id) ? arr.filter(id => id !== a.id) : [...arr, a.id]; });
-                        else setSelectedAnswer(a.id);
+                        else { if (a.id === selectedAnswer && submitted) return; setSelectedAnswer(a.id); setSubmitted(false); submitAnswer(a.id); }
                       }}
                       className={`btn-answer py-4 px-6 text-lg font-semibold text-left ${isSelected ? 'selected' : ''}`}>
                       <span className="font-bold mr-3 opacity-60">{answerLetters[i % answerLetters.length]}</span> {a.text}
@@ -294,12 +301,29 @@ export default function GameView() {
                 ))}
               </div>
             )}
-            {error && <p className="text-red-400 text-sm text-center mt-2 cursor-pointer" onClick={() => setError('')}>{error}</p>}
-            <button onClick={submitAnswer}
+            {error && <p className="text-red-400 text-sm text-center mt-2 cursor-pointer" onClick={() => (oneTap && selectedAnswer ? submitAnswer(selectedAnswer) : setError(''))}>{error}</p>}
+            {oneTap ? (
+              <div className="text-center mt-4 min-h-12 text-text-secondary">
+                {submitted ? (
+                  <>
+                    <p className="text-lg">✓ Answer received</p>
+                    <p className="text-sm">{!answerClosed ? 'Tap another option to change it' : ''}{liveCount.total > 0 ? `${!answerClosed ? ' · ' : ''}${liveCount.count}/${liveCount.total} answered` : ''}</p>
+                  </>
+                ) : answerClosed ? (
+                  <p className="text-lg">{phase !== 'question' ? 'Question closed' : "Time's Up!"}</p>
+                ) : selectedAnswer && !error ? (
+                  <p className="text-sm">Sending…</p>
+                ) : (
+                  <p className="text-sm">Tap your answer</p>
+                )}
+              </div>
+            ) : (
+            <button onClick={() => submitAnswer()}
               disabled={phase !== 'question' || (timeRemaining !== null && timeRemaining <= 0) || (isChoiceType ? !selectedAnswer : isMultiPart ? !Object.values(multiPartAnswers).some(v => v.trim()) : !textAnswer.trim())}
               className="w-full mt-4 py-4 bg-accent hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-semibold text-lg transition">
               {phase !== 'question' ? 'Question closed' : timeRemaining !== null && timeRemaining <= 0 ? "Time's Up!" : 'Submit'}
             </button>
+            )}
           </>
         )}
       </div>
