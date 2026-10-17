@@ -287,6 +287,7 @@ export default function GameView() {
                 <input type={question.type === 'free_text' ? 'text' : 'number'} step="any"
                   placeholder={question.type === 'free_text' ? 'Type your answer...' : 'Enter a number...'}
                   value={textAnswer} onChange={e => setTextAnswer(e.target.value)} maxLength={100}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
                   className="w-full px-4 py-3 text-lg bg-bg-card border border-border-theme rounded-lg focus:outline-none focus:border-accent" autoFocus />
               </div>
             )}
@@ -298,7 +299,8 @@ export default function GameView() {
                     <input type="text" placeholder={`Enter ${label.toLowerCase()}...`}
                       value={multiPartAnswers[label] || ''}
                       onChange={e => setMultiPartAnswers(prev => ({ ...prev, [label]: e.target.value }))}
-                      maxLength={100} className="w-full px-4 py-3 text-lg bg-bg-card border border-border-theme rounded-lg focus:outline-none focus:border-accent" />
+                      maxLength={100} autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
+                      className="w-full px-4 py-3 text-lg bg-bg-card border border-border-theme rounded-lg focus:outline-none focus:border-accent" />
                   </div>
                 ))}
               </div>
