@@ -145,9 +145,9 @@ test('#16 #9 #7 #19 #18: full game flow scores correctly', async () => {
   const closed = await waitFor(c, s1.sessionId, s => s.currentPhase !== 'question');
   assert.equal(closed.question.correctValue, 100, '#7: answer key revealed after close');
 
-  // #16: exactly 1200 / 800 / 600, not multiplied by the number of questions
+  // #16: untimed => only the closest scores, 1 point, not multiplied by the number of questions
   const scores = scoresByName(closed);
-  assert.deepEqual(scores, { Anna: 1200, Bo: 800, Cia: 600 });
+  assert.deepEqual(scores, { Anna: 1, Bo: 0, Cia: 0 });
 
   // #16: a second session on the same quiz is scored independently
   const s2 = await createSession(token);
@@ -155,9 +155,9 @@ test('#16 #9 #7 #19 #18: full game flow scores correctly', async () => {
   await start(s2.sessionId, token);
   await answer(d, estimationId, { textAnswer: '100' });
   const closed2 = await waitFor(c, s2.sessionId, s => s.currentPhase !== 'question');
-  assert.deepEqual(scoresByName(closed2), { Dan: 1200 });
+  assert.deepEqual(scoresByName(closed2), { Dan: 1 });
   const s1Again = (await c.get(`/session/${s1.sessionId}/current`)).body;
-  assert.deepEqual(scoresByName(s1Again), { Anna: 1200, Bo: 800, Cia: 600 }, 'session 1 untouched by session 2');
+  assert.deepEqual(scoresByName(s1Again), { Anna: 1, Bo: 0, Cia: 0 }, 'session 1 untouched by session 2');
 
   // Move session 1 on to the single-choice question
   await waitFor(c, s1.sessionId, s => ['scoreboard', 'waiting_for_continue'].includes(s.currentPhase), 15000);
@@ -188,6 +188,30 @@ test('#16 #9 #7 #19 #18: full game flow scores correctly', async () => {
   const delSession = await c.del(`/quiz/${token}/session/${s2.sessionId}`);
   assert.equal(delSession.status, 200);
   assert.equal(db.prepare('SELECT COUNT(*) c FROM participant WHERE session_id = ?').get(s2.sessionId).c, 0);
+});
+
+test('estimation: timed sessions rank by proximity, untimed ties all score 1', async () => {
+  const token = await createQuiz();
+  const estimationId = await addEstimation(token, 100);
+
+  const timed = await createSession(token, { useTimers: true, answerTimeSeconds: 30 });
+  const [a, b, cId] = await Promise.all(['Anna', 'Bo', 'Cia'].map(n => register(timed.joinCode, n)));
+  await start(timed.sessionId, token);
+  await answer(a, estimationId, { textAnswer: '100' });
+  await answer(b, estimationId, { textAnswer: '90' });
+  await answer(cId, estimationId, { textAnswer: '50' });
+  const closed = await waitFor(c, timed.sessionId, s => s.currentPhase !== 'question');
+  assert.deepEqual(scoresByName(closed), { Anna: 1200, Bo: 800, Cia: 600 });
+
+  const untimed = await createSession(token);
+  const [d, e, f] = await Promise.all(['Dan', 'Eva', 'Fia'].map(n => register(untimed.joinCode, n)));
+  await start(untimed.sessionId, token);
+  await answer(d, estimationId, { textAnswer: '98' });
+  await answer(e, estimationId, { textAnswer: '102' });
+  await answer(f, estimationId, { textAnswer: '50' });
+  const closed2 = await waitFor(c, untimed.sessionId, s => s.currentPhase !== 'question');
+  assert.deepEqual(scoresByName(closed2), { Dan: 1, Eva: 1, Fia: 0 });
+  assert.equal(db.prepare('SELECT is_correct FROM response WHERE participant_id = ?').get(f.participantId).is_correct, 0);
 });
 
 test('#27: multiple_choice is scored and reported without the old comma-text encoding', async () => {

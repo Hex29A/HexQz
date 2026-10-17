@@ -2,6 +2,10 @@
 
 Notable changes, newest first. Dates are deploy dates.
 
+## 2026-10-17
+
+- **Estimation scoring in untimed sessions** — untimed sessions give 1 point per correct answer, but estimation questions still handed out the 1000/800/600 ranking table (plus 200 for an exact hit), so three estimation questions decided a whole 24-question party quiz. In untimed sessions only the closest answer now scores, 1 point, and ties all get it. Timed sessions keep the ranking table.
+
 ## 2026-10-16
 
 - **Stale round champion fix** — the phone and big screen cleared the "Question Champion" box only when a new champion arrived, so after a question nobody got right the previous question's winner showed again and looked like a correct answer. A new question now clears it, and the round winner event sets it.

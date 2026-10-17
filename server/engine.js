@@ -470,12 +470,26 @@ const scoreEstimationQuestion = db.transaction((question, sessionId) => {
     .filter(r => !Number.isNaN(r.distance))
     .sort((a, b) => a.distance - b.distance);
 
-  const table = [1000, 800, 600, 500, 400];
-  const updateResponse = db.prepare('UPDATE response SET is_correct = 1, points_awarded = ? WHERE id = ?');
+  const updateResponse = db.prepare('UPDATE response SET is_correct = ?, points_awarded = ? WHERE id = ?');
   const updateScore = db.prepare('UPDATE participant SET score = score + ? WHERE id = ?');
+
+  // Untimed sessions give 1 point per correct answer, so the ranking table
+  // would drown everything else: only the closest (ties included) score, 1 each.
+  const { answer_time_seconds } = db.prepare('SELECT answer_time_seconds FROM session WHERE id = ?').get(sessionId);
+  if (!answer_time_seconds) {
+    const best = ranked[0]?.distance;
+    ranked.forEach(r => {
+      const won = r.distance === best;
+      updateResponse.run(won ? 1 : 0, won ? 1 : 0, r.id);
+      if (won) updateScore.run(1, r.participant_id);
+    });
+    return;
+  }
+
+  const table = [1000, 800, 600, 500, 400];
   ranked.forEach((r, i) => {
     const points = (i < table.length ? table[i] : 200) + (r.distance === 0 ? 200 : 0);
-    updateResponse.run(points, r.id);
+    updateResponse.run(1, points, r.id);
     updateScore.run(points, r.participant_id);
   });
 });

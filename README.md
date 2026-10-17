@@ -153,7 +153,7 @@ Response time is measured on the server, from the moment the question is sent un
 | True / False | Two buttons, sent on tap like single choice. Points based on speed if correct. |
 | Free Text | Text input, auto-matched case-insensitively against accepted answers. |
 | Numeric | Number input, correct if within ±tolerance. |
-| Estimation | Number input, ranked by proximity to correct value. Top scores by closeness. |
+| Estimation | Number input, ranked by proximity to correct value. Timed: 1000/800/600/500/400 by closeness (+200 for exact). Untimed: 1 point to the closest (ties share). |
 | Multi-Part | Multiple fields (e.g. Artist + Song), scored per part. |
 
 ## Updating
