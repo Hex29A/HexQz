@@ -2,6 +2,10 @@
 
 Notable changes, newest first. Dates are deploy dates.
 
+## 2026-10-18
+
+- **Dependency security update** — closes all 8 Dependabot alerts in the client: Vite 5 → 6.4, React Router 6 → 7.18 (the app only uses `Routes`, `useParams`, `useNavigate` and `useSearchParams`, which work the same in v7), `npm audit fix` for `source-map-js` and friends, and an override that pins `postcss-selector-parser` to 7.1.6 so Tailwind 3 doesn't have to become Tailwind 4. One build-time `braces` advisory stays open because no fixed version exists yet.
+
 ## 2026-10-17
 
 - **Estimation scoring in untimed sessions** — untimed sessions give 1 point per correct answer, but estimation questions still handed out the 1000/800/600 ranking table (plus 200 for an exact hit), so three estimation questions decided a whole 24-question party quiz. In untimed sessions only the closest answer now scores, 1 point, and ties all get it. Timed sessions keep the ranking table.
