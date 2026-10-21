@@ -484,12 +484,12 @@ test('scoreboard off: per-question splash runs, standings never shown mid-game',
 test('quiz cover: stored, shown in the waiting state, kept and cleared', async () => {
   const token = await createQuiz();
   assert.equal((await c.get(`/quiz/${token}`)).body.showScoreboard, true, 'scoreboard on by default');
-  const put = await c.put(`/quiz/${token}`, { title: 'Testquiz', coverImageUrl: '/uploads/cover.png', coverText: 'Grattis Cecilia!' });
+  const put = await c.put(`/quiz/${token}`, { title: 'Testquiz', coverImageUrl: '/uploads/cover.png', coverText: 'Grattis Anna!' });
   assert.equal(put.status, 200, JSON.stringify(put.body));
   await c.put(`/quiz/${token}`, { title: 'Testquiz', lightMode: true });
   const quiz = (await c.get(`/quiz/${token}`)).body;
   assert.equal(quiz.coverImageUrl, '/uploads/cover.png');
-  assert.equal(quiz.coverText, 'Grattis Cecilia!');
+  assert.equal(quiz.coverText, 'Grattis Anna!');
 
   const bad = await c.put(`/quiz/${token}`, { title: 'Testquiz', coverImageUrl: 'javascript:alert(1)' });
   assert.equal(bad.status, 400);
@@ -498,7 +498,7 @@ test('quiz cover: stored, shown in the waiting state, kept and cleared', async (
   const s = await createSession(token);
   const waiting = (await c.get(`/session/${s.sessionId}/current`)).body;
   assert.equal(waiting.coverImageUrl, '/uploads/cover.png');
-  assert.equal(waiting.coverText, 'Grattis Cecilia!');
+  assert.equal(waiting.coverText, 'Grattis Anna!');
 
   await c.put(`/quiz/${token}`, { title: 'Testquiz', coverImageUrl: null, coverText: '' });
   const cleared = (await c.get(`/quiz/${token}`)).body;
