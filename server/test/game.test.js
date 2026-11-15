@@ -420,6 +420,23 @@ test('hide scores until end: nothing revealed between questions', async () => {
   assert.ok(done.scores[0].score > 0, 'final standings shown at the end');
 });
 
+test('answer count names who answered, and only names, in hidden-scores mode', async () => {
+  const token = await createQuiz();
+  await c.put(`/quiz/${token}`, { title: 'Testquiz', hideScoresUntilEnd: true });
+  const q1 = await addSingleChoice(token);
+  await addSingleChoice(token);
+  const s = await createSession(token);
+  const a = await register(s.joinCode, 'Alma');
+  await register(s.joinCode, 'Bo');
+  const state = await start(s.sessionId, token);
+  assert.deepEqual(state.answerCount.answered, []);
+  await answer(a, q1, { answerId: state.answers.find(x => x.text === 'Oslo').id });
+  const after = (await c.get(`/session/${s.sessionId}/current`)).body;
+  assert.deepEqual(after.answerCount, { count: 1, total: 2, answered: ['Alma'], waiting: ['Bo'] });
+  assert.deepEqual(after.scores, [], 'names only: no scores while hidden');
+  assert.equal(after.questionStats, null, 'what was answered stays hidden');
+});
+
 test('hide scores off (default): round result still shown', async () => {
   const token = await createQuiz();
   assert.equal((await c.get(`/quiz/${token}`)).body.hideScoresUntilEnd, false);

@@ -23,6 +23,19 @@ function MiniQR({ joinCode }) {
   );
 }
 
+// Who has answered so far: names only (never what they answered or their
+// score), so it is safe in hidden-scores mode too.
+function AnsweredNames({ names }) {
+  if (!names?.length) return null;
+  return (
+    <div className="flex flex-wrap justify-center gap-2 max-w-4xl mx-auto mt-6" aria-label="Answered">
+      {names.map(n => (
+        <span key={n} className="px-3 py-1 rounded-full bg-green-500/20 border border-green-500/60 text-green-300 text-lg font-semibold">{n}</span>
+      ))}
+    </div>
+  );
+}
+
 // Display mode for showing on a screen/projector during quiz. Read-only:
 // it needs no admin token (issue #5) and hydrates from session:state.
 export default function DisplayView() {
@@ -38,7 +51,7 @@ export default function DisplayView() {
   const [questionStartedAt, setQuestionStartedAt] = useState(null);
   const [getReadyStartedAt, setGetReadyStartedAt] = useState(null);
   const [getReadySeconds, setGetReadySeconds] = useState(5);
-  const [answerCount, setAnswerCount] = useState({ count: 0, total: 0 });
+  const [answerCount, setAnswerCount] = useState({ count: 0, total: 0, answered: [] });
   const [winner, setWinner] = useState(null);
   const [roundWinner, setRoundWinner] = useState(null);
   const [questionWinner, setQuestionWinner] = useState(null);
@@ -71,7 +84,7 @@ export default function DisplayView() {
       setAnswers(data.answers || []);
       setQuestionStartedAt(data.questionStartedAt || null);
       setGetReadyStartedAt(data.getReadyStartedAt || null);
-      if (data.answerCount) setAnswerCount({ count: data.answerCount.count, total: data.answerCount.total });
+      if (data.answerCount) setAnswerCount({ count: data.answerCount.count, total: data.answerCount.total, answered: data.answerCount.answered || [] });
       setRoundWinner(data.roundWinner || null);
       setQuestionWinner(data.roundWinner || null);
       if (data.questionStats) {
@@ -90,22 +103,22 @@ export default function DisplayView() {
       'session:get_ready': (d) => { preloadImage(d.preloadImageUrl); if (d.countdown) setGetReadySeconds(d.countdown); setGetReadyStartedAt(d.getReadyStartedAt); setQuestionIndex(d.nextQuestionIndex); setTotalQuestions(d.totalQuestions); setPhase('getReady'); },
       'session:question': (d) => {
         setQuestion(d.question); setQuestionIndex(d.questionIndex); setTotalQuestions(d.totalQuestions);
-        setAnswers(d.answers || []); setAnswerCount({ count: 0, total: 0 }); setRoundWinner(null); setQuestionWinner(null);
+        setAnswers(d.answers || []); setAnswerCount({ count: 0, total: 0, answered: [] }); setRoundWinner(null); setQuestionWinner(null);
         setQuestionStartedAt(d.questionStartedAt || null);
         if (d.answerTimeSeconds !== undefined) setAnswerTimeSeconds(d.answerTimeSeconds);
         setPhase('question');
       },
-      'session:answer_count': (d) => setAnswerCount({ count: d.count, total: d.total }),
+      'session:answer_count': (d) => setAnswerCount({ count: d.count, total: d.total, answered: d.answered || [] }),
       'session:correct_answer': (d) => { setCorrectAnswerQuestion(d.question); setCorrectAnswers(d.correctAnswers || []); setPhase('correctAnswer'); },
       'session:round_result': (d) => { setRoundWinner(d.winner); setQuestionWinner(d.winner || null); setPhase('roundResult'); },
       'session:scores': (d) => { setScores(d.scores || []); setQuestionWinner(d.roundWinner || null); setPhase('scoreboard'); },
       'session:waiting_for_continue': (d) => {
-        if (d?.answerCount) setAnswerCount({ count: d.answerCount.count, total: d.answerCount.total });
+        if (d?.answerCount) setAnswerCount({ count: d.answerCount.count, total: d.answerCount.total, answered: d.answerCount.answered || [] });
         if (d?.scoreboardHidden) setScoreboardHidden(true);
         setPhase(d?.scoresHidden ? 'locked' : 'scoreboard');
       },
       'session:finished': (d) => { setPhase('finished'); setScores(d.results || []); if (d.results?.length) setWinner(d.results[0]); },
-      'session:reset': () => { setPhase('waiting'); setScores([]); setQuestion(null); setQuestionIndex(0); setAnswerCount({ count: 0, total: 0 }); }
+      'session:reset': () => { setPhase('waiting'); setScores([]); setQuestion(null); setQuestionIndex(0); setAnswerCount({ count: 0, total: 0, answered: [] }); }
     }
   });
 
@@ -266,6 +279,7 @@ export default function DisplayView() {
               })}
             </div>
           )}
+          <AnsweredNames names={answerCount.answered} />
         </div>
       </div>
     );
@@ -400,6 +414,7 @@ export default function DisplayView() {
         {answerCount.total > 0 && (
           <p className="text-3xl text-text-secondary">{answerCount.count}/{answerCount.total} answered</p>
         )}
+        <AnsweredNames names={answerCount.answered} />
       </div>
     );
   }
